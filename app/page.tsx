@@ -1,5 +1,3 @@
-import Link from 'next/link'
-
 export default function Home() {
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -39,9 +37,9 @@ export default function Home() {
           
           {/* Launch App Button */}
           <div className="pt-12">
-            <Link href="/app" className="pill-button inline-block text-lg">
+            <a href="https://app.phorus.xyz" className="pill-button inline-block text-lg">
               Launch App
-            </Link>
+            </a>
           </div>
         </div>
       </div>
