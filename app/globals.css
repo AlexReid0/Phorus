@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --deep-green: #0a1f0a;
+  --mint: #a8f5d0;
+  --mint-dark: #7dd3a0;
+}
+
+body {
+  background: var(--deep-green);
+  color: #ffffff;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Fluid gradient background */
+.fluid-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(ellipse at top, rgba(168, 245, 208, 0.1) 0%, transparent 50%),
+              radial-gradient(ellipse at bottom right, rgba(168, 245, 208, 0.08) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Pill button */
+.pill-button {
+  @apply px-8 py-4 rounded-full font-medium text-deep-green bg-mint hover:bg-mint-dark transition-all duration-300 transform hover:scale-105;
+}
