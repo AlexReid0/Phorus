@@ -11,7 +11,7 @@ import { useState } from 'react'
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'dummy-project-id'
 
 // Configure chains
-const chains = [mainnet, arbitrum, optimism, base] as const
+const chains = [mainnet, arbitrum, optimism, base]
 
 // Create Wagmi adapter
 const wagmiAdapter = new WagmiAdapter({
