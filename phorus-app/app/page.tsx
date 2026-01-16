@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
-import { formatUnits } from 'viem'
+import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { formatUnits, parseUnits, erc20Abi } from 'viem'
 import ConnectWallet from './components/ConnectWallet'
 import { getQuote, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
 
@@ -51,9 +51,16 @@ export default function BridgePage() {
   
   // Transaction state
   const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
+  const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   })
+  const { isLoading: isApprovalConfirming, isSuccess: isApprovalConfirmed } = useWaitForTransactionReceipt({
+    hash: approvalHash,
+  })
+  
+  // Approval state
+  const [needsApproval, setNeedsApproval] = useState(false)
 
   // Fetch quote when parameters change
   useEffect(() => {
@@ -80,8 +87,15 @@ export default function BridgePage() {
 
         if (quoteData) {
           setQuote(quoteData)
+          // Check if approval is needed
+          if (quoteData.estimate.approvalAddress && fromToken.symbol !== 'ETH') {
+            setNeedsApproval(true)
+          } else {
+            setNeedsApproval(false)
+          }
         } else {
           setQuoteError('Unable to fetch quote. Please try again.')
+          setNeedsApproval(false)
         }
       } catch (error) {
         console.error('Error fetching quote:', error)
@@ -102,8 +116,34 @@ export default function BridgePage() {
     setToChain(temp)
   }
 
+  const handleApproval = async () => {
+    if (!quote || !address || !isConnected || !quote.estimate.approvalAddress) return
+
+    try {
+      const tokenAddress = quote.action.fromToken.address as `0x${string}`
+      const approvalAddress = quote.estimate.approvalAddress as `0x${string}`
+      const amount = BigInt(quote.action.fromAmount)
+
+      writeApproval({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [approvalAddress, amount],
+      })
+    } catch (error: any) {
+      console.error('Error approving token:', error)
+      setQuoteError(error?.message || 'Failed to approve token')
+    }
+  }
+
   const handleBridge = async () => {
     if (!quote || !address || !isConnected) return
+
+    // If approval is needed and not confirmed, don't proceed
+    if (needsApproval && quote.estimate.approvalAddress && !isApprovalConfirmed) {
+      setQuoteError('Please approve the token first')
+      return
+    }
 
     try {
       const txRequest = quote.transactionRequest
@@ -113,12 +153,13 @@ export default function BridgePage() {
       }
 
       // Execute the transaction using sendTransaction
+      // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
       sendTransaction({
         to: txRequest.to as `0x${string}`,
         value: BigInt(txRequest.value || '0'),
         data: txRequest.data as `0x${string}`,
         gas: txRequest.gasLimit ? BigInt(txRequest.gasLimit) : undefined,
-        gasPrice: txRequest.gasPrice ? BigInt(txRequest.gasPrice) : undefined,
+        // Don't set gasPrice - let wagmi handle it with EIP-1559
       })
     } catch (error: any) {
       console.error('Error executing bridge:', error)
@@ -381,6 +422,19 @@ export default function BridgePage() {
               )}
             </div>
 
+            {/* Approval Button (if needed) */}
+            {needsApproval && quote?.estimate.approvalAddress && !isApprovalConfirmed && (
+              <button
+                disabled={!isConnected || !quote || isApproving || isApprovalConfirming}
+                onClick={handleApproval}
+                className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
+              >
+                {isApproving || isApprovalConfirming 
+                  ? isApprovalConfirming ? 'Confirming Approval...' : 'Approving...' 
+                  : `Approve ${fromToken.symbol}`}
+              </button>
+            )}
+
             {/* Bridge Button */}
             <button
               disabled={
@@ -389,8 +443,11 @@ export default function BridgePage() {
                 parseFloat(amount) <= 0 || 
                 loadingQuote || 
                 !quote || 
+                (needsApproval && !isApprovalConfirmed) ||
                 isPendingTx || 
-                isConfirming
+                isConfirming ||
+                isApproving ||
+                isApprovalConfirming
               }
               onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
@@ -401,12 +458,31 @@ export default function BridgePage() {
                 ? 'Loading Quote...' 
                 : !quote 
                 ? 'Enter Amount' 
+                : needsApproval && !isApprovalConfirmed
+                ? 'Approve Token First'
                 : isPendingTx || isConfirming
                 ? isConfirming ? 'Confirming...' : 'Processing...'
                 : isConfirmed
                 ? 'Bridge Complete!'
                 : 'Bridge'}
             </button>
+            
+            {/* Approval Transaction Status */}
+            {approvalHash && (
+              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                <div className="text-sm text-yellow-400 mb-2">
+                  {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
+                </div>
+                <a
+                  href={`${chain?.blockExplorers?.default?.url}/tx/${approvalHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-yellow-400 hover:text-yellow-300 underline break-all"
+                >
+                  {approvalHash}
+                </a>
+              </div>
+            )}
             
             {/* Transaction Status */}
             {txHash && (
