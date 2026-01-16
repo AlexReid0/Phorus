@@ -95,6 +95,8 @@ export default function Navbar() {
               <a
                 key={link.href}
                 href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-sm text-gray-300 hover:text-mint transition-colors px-3 py-1.5 rounded-full hover:bg-mint/10"
               >
                 {link.label}
@@ -140,6 +142,8 @@ export default function Navbar() {
         >
           <a
             href="https://app.phorus.xyz"
+            target="_blank"
+            rel="noopener noreferrer"
             className="pill-button text-sm px-4 py-2"
           >
             Launch App
