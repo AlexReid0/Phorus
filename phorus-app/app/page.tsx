@@ -36,6 +36,7 @@ export default function BridgePage() {
   const [toToken, setToToken] = useState<Token>(tokens[0])
   const [amount, setAmount] = useState<string>('')
   const [isConnected, setIsConnected] = useState(false)
+  const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
 
   const handleSwapChains = () => {
     const temp = fromChain
@@ -53,7 +54,7 @@ export default function BridgePage() {
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-serif font-bold text-white">Phorus</h1>
+            <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
             <button
               onClick={() => setIsConnected(!isConnected)}
               className={`pill-button text-sm px-6 py-2 ${isConnected ? 'bg-green-500 hover:bg-green-600' : ''}`}
@@ -77,19 +78,19 @@ export default function BridgePage() {
               
               <div className="flex gap-3">
                 {/* Chain Selector */}
-                <div className="relative flex-1">
+                <div className="relative flex-1 group">
                   <select
                     value={fromChain.id}
                     onChange={(e) => setFromChain(chains.find(c => c.id === e.target.value) || chains[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium"
+                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id}>
+                      <option key={chain.id} value={chain.id} className="bg-deep-green">
                         {chain.icon} {chain.name}
                       </option>
                     ))}
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
                     <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
@@ -97,19 +98,19 @@ export default function BridgePage() {
                 </div>
 
                 {/* Token Selector */}
-                <div className="relative flex-1">
+                <div className="relative flex-1 group">
                   <select
                     value={fromToken.symbol}
                     onChange={(e) => setFromToken(tokens.find(t => t.symbol === e.target.value) || tokens[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium"
+                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol}>
+                      <option key={token.symbol} value={token.symbol} className="bg-deep-green">
                         {token.icon} {token.symbol}
                       </option>
                     ))}
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
                     <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
@@ -174,19 +175,19 @@ export default function BridgePage() {
               
               <div className="flex gap-3">
                 {/* Chain Selector */}
-                <div className="relative flex-1">
+                <div className="relative flex-1 group">
                   <select
                     value={toChain.id}
                     onChange={(e) => setToChain(chains.find(c => c.id === e.target.value) || chains[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium"
+                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id}>
+                      <option key={chain.id} value={chain.id} className="bg-deep-green">
                         {chain.icon} {chain.name}
                       </option>
                     ))}
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
                     <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
@@ -194,25 +195,39 @@ export default function BridgePage() {
                 </div>
 
                 {/* Token Selector */}
-                <div className="relative flex-1">
+                <div className="relative flex-1 group">
                   <select
                     value={toToken.symbol}
                     onChange={(e) => setToToken(tokens.find(t => t.symbol === e.target.value) || tokens[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium"
+                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol}>
+                      <option key={token.symbol} value={token.symbol} className="bg-deep-green">
                         {token.icon} {token.symbol}
                       </option>
                     ))}
                   </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
                     <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
                 </div>
               </div>
+
+              {/* Hyperliquid Wallet Address Input */}
+              {toChain.id === 'hyperliquid' && (
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-400 font-medium">Hyperliquid Wallet Address (Optional)</label>
+                  <input
+                    type="text"
+                    value={hyperliquidAddress}
+                    onChange={(e) => setHyperliquidAddress(e.target.value)}
+                    placeholder="Enter Hyperliquid address or leave empty for connected wallet"
+                    className="bridge-input w-full px-4 py-3 rounded-xl text-sm placeholder-gray-600 focus:border-mint/40"
+                  />
+                </div>
+              )}
 
               {/* Output Amount */}
               <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">

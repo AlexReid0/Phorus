@@ -16,8 +16,11 @@ const config: Config = {
         'border-mint': 'rgba(168, 245, 208, 0.2)',
       },
       fontFamily: {
-        'serif': ['Georgia', 'Times New Roman', 'serif'],
+        'serif': ['Playfair Display', 'Georgia', 'serif'],
         'sans': ['Inter', 'system-ui', 'sans-serif'],
+      },
+      fontWeight: {
+        'serif-light': '300',
       },
     },
   },

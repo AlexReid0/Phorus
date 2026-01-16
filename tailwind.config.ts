@@ -14,8 +14,11 @@ const config: Config = {
         'mint-dark': '#7dd3a0',
       },
       fontFamily: {
-        'serif': ['Georgia', 'Times New Roman', 'serif'],
+        'serif': ['Playfair Display', 'Georgia', 'serif'],
         'sans': ['Inter', 'system-ui', 'sans-serif'],
+      },
+      fontWeight: {
+        'serif-light': '300',
       },
     },
   },
