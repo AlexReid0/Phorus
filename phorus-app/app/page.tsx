@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { useAccount, useBalance } from 'wagmi'
+import ConnectWallet from './components/ConnectWallet'
 
 interface Chain {
   id: string
@@ -30,12 +32,14 @@ const tokens: Token[] = [
 ]
 
 export default function BridgePage() {
+  const { address, isConnected } = useAccount()
+  const { data: balance } = useBalance({ address })
+  
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
   const [toChain, setToChain] = useState<Chain>(chains[4]) // Hyperliquid
   const [fromToken, setFromToken] = useState<Token>(tokens[0])
   const [toToken, setToToken] = useState<Token>(tokens[0])
   const [amount, setAmount] = useState<string>('')
-  const [isConnected, setIsConnected] = useState(false)
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
 
   const handleSwapChains = () => {
@@ -55,12 +59,7 @@ export default function BridgePage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
-            <button
-              onClick={() => setIsConnected(!isConnected)}
-              className={`pill-button text-sm px-6 py-2 ${isConnected ? 'bg-green-500 hover:bg-green-600' : ''}`}
-            >
-              {isConnected ? '0x1234...5678' : 'Connect Wallet'}
-            </button>
+            <ConnectWallet />
           </div>
 
           {/* Bridge Card */}
@@ -69,9 +68,9 @@ export default function BridgePage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-gray-400 font-medium">From</label>
-                {isConnected && (
+                {isConnected && balance && (
                   <span className="text-xs text-gray-500">
-                    Balance: {fromToken.balance} {fromToken.symbol}
+                    Balance: {parseFloat(balance.formatted).toFixed(4)} {balance.symbol}
                   </span>
                 )}
               </div>
@@ -168,7 +167,7 @@ export default function BridgePage() {
                 <label className="text-sm text-gray-400 font-medium">To</label>
                 {isConnected && (
                   <span className="text-xs text-gray-500">
-                    Balance: {toToken.balance} {toToken.symbol}
+                    Hyperliquid Account
                   </span>
                 )}
               </div>
