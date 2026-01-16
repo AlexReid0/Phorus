@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { useAccount, useBalance } from 'wagmi'
+import { useState, useEffect } from 'react'
+import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi'
+import { formatUnits } from 'viem'
 import ConnectWallet from './components/ConnectWallet'
+import { getQuote, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
 
 interface Chain {
   id: string
@@ -32,7 +34,7 @@ const tokens: Token[] = [
 ]
 
 export default function BridgePage() {
-  const { address, isConnected } = useAccount()
+  const { address, isConnected, chain } = useAccount()
   const { data: balance } = useBalance({ address })
   
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
@@ -41,11 +43,110 @@ export default function BridgePage() {
   const [toToken, setToToken] = useState<Token>(tokens[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
+  
+  // Quote state
+  const [quote, setQuote] = useState<any>(null)
+  const [loadingQuote, setLoadingQuote] = useState(false)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
+  
+  // Transaction state
+  const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  })
+
+  // Fetch quote when parameters change
+  useEffect(() => {
+    if (!isConnected || !address || !amount || parseFloat(amount) <= 0) {
+      setQuote(null)
+      return
+    }
+
+    const fetchQuote = async () => {
+      setLoadingQuote(true)
+      setQuoteError(null)
+      
+      try {
+        const quoteData = await getQuote({
+          fromChain: fromChain.id,
+          toChain: toChain.id,
+          fromToken: fromToken.symbol,
+          toToken: toToken.symbol,
+          fromAmount: amount,
+          fromAddress: address,
+          toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
+          slippage: 0.03, // 3% slippage
+        })
+
+        if (quoteData) {
+          setQuote(quoteData)
+        } else {
+          setQuoteError('Unable to fetch quote. Please try again.')
+        }
+      } catch (error) {
+        console.error('Error fetching quote:', error)
+        setQuoteError('Error fetching quote. Please try again.')
+      } finally {
+        setLoadingQuote(false)
+      }
+    }
+
+    // Debounce quote fetching
+    const timeoutId = setTimeout(fetchQuote, 500)
+    return () => clearTimeout(timeoutId)
+  }, [isConnected, address, fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress])
 
   const handleSwapChains = () => {
     const temp = fromChain
     setFromChain(toChain)
     setToChain(temp)
+  }
+
+  const handleBridge = async () => {
+    if (!quote || !address || !isConnected) return
+
+    try {
+      const txRequest = quote.transactionRequest
+      if (!txRequest) {
+        setQuoteError('No transaction data available')
+        return
+      }
+
+      // Execute the transaction using sendTransaction
+      sendTransaction({
+        to: txRequest.to as `0x${string}`,
+        value: BigInt(txRequest.value || '0'),
+        data: txRequest.data as `0x${string}`,
+        gas: txRequest.gasLimit ? BigInt(txRequest.gasLimit) : undefined,
+        gasPrice: txRequest.gasPrice ? BigInt(txRequest.gasPrice) : undefined,
+      })
+    } catch (error: any) {
+      console.error('Error executing bridge:', error)
+      setQuoteError(error?.message || 'Failed to execute bridge transaction')
+    }
+  }
+
+  // Format output amount from quote
+  const getOutputAmount = () => {
+    if (quote?.estimate?.toAmount) {
+      const decimals = toToken.symbol === 'ETH' ? 18 : 6
+      return formatUnits(BigInt(quote.estimate.toAmount), decimals)
+    }
+    if (amount) {
+      return (parseFloat(amount) * 0.999).toFixed(4)
+    }
+    return '0.00'
+  }
+
+  // Get fee info from quote
+  const getFeeInfo = () => {
+    if (quote?.estimate?.feeCosts && quote.estimate.feeCosts.length > 0) {
+      const totalFee = quote.estimate.feeCosts.reduce((sum: number, fee: any) => {
+        return sum + parseFloat(fee.amountUSD || '0')
+      }, 0)
+      return totalFee.toFixed(4)
+    }
+    return '0.1%'
   }
 
   return (
@@ -128,19 +229,33 @@ export default function BridgePage() {
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 flex gap-2">
                   <button
-                    onClick={() => setAmount('25')}
+                    onClick={() => {
+                      if (balance) {
+                        const percent = parseFloat(balance.formatted) * 0.25
+                        setAmount(percent.toString())
+                      }
+                    }}
                     className="text-xs text-mint hover:text-mint-dark px-2 py-1 rounded"
                   >
                     25%
                   </button>
                   <button
-                    onClick={() => setAmount('50')}
+                    onClick={() => {
+                      if (balance) {
+                        const percent = parseFloat(balance.formatted) * 0.5
+                        setAmount(percent.toString())
+                      }
+                    }}
                     className="text-xs text-mint hover:text-mint-dark px-2 py-1 rounded"
                   >
                     50%
                   </button>
                   <button
-                    onClick={() => setAmount('100')}
+                    onClick={() => {
+                      if (balance) {
+                        setAmount(balance.formatted)
+                      }
+                    }}
                     className="text-xs text-mint hover:text-mint-dark px-2 py-1 rounded"
                   >
                     MAX
@@ -230,7 +345,13 @@ export default function BridgePage() {
 
               {/* Output Amount */}
               <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
-                {amount ? (parseFloat(amount) * 0.999).toFixed(4) : '0.00'}
+                {loadingQuote ? (
+                  <span className="text-sm">Loading quote...</span>
+                ) : quoteError ? (
+                  <span className="text-sm text-red-400">{quoteError}</span>
+                ) : (
+                  getOutputAmount()
+                )}
               </div>
             </div>
 
@@ -238,21 +359,78 @@ export default function BridgePage() {
             <div className="pt-4 border-t border-mint/10 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Bridge Fee</span>
-                <span className="text-white">0.1%</span>
+                <span className="text-white">
+                  {quote?.estimate?.feeCosts ? `$${getFeeInfo()}` : '0.1%'}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Estimated Time</span>
-                <span className="text-white">~2 min</span>
+                <span className="text-white">
+                  {quote?.estimate?.executionDuration 
+                    ? `~${Math.ceil(quote.estimate.executionDuration / 60)} min`
+                    : '~2 min'}
+                </span>
               </div>
+              {quote?.estimate?.toAmountMin && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Minimum Received</span>
+                  <span className="text-white text-xs">
+                    {formatUnits(BigInt(quote.estimate.toAmountMin), toToken.symbol === 'ETH' ? 18 : 6)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Bridge Button */}
             <button
-              disabled={!isConnected || !amount || parseFloat(amount) <= 0}
+              disabled={
+                !isConnected || 
+                !amount || 
+                parseFloat(amount) <= 0 || 
+                loadingQuote || 
+                !quote || 
+                isPendingTx || 
+                isConfirming
+              }
+              onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
             >
-              {!isConnected ? 'Connect Wallet to Bridge' : 'Bridge'}
+              {!isConnected 
+                ? 'Connect Wallet to Bridge' 
+                : loadingQuote 
+                ? 'Loading Quote...' 
+                : !quote 
+                ? 'Enter Amount' 
+                : isPendingTx || isConfirming
+                ? isConfirming ? 'Confirming...' : 'Processing...'
+                : isConfirmed
+                ? 'Bridge Complete!'
+                : 'Bridge'}
             </button>
+            
+            {/* Transaction Status */}
+            {txHash && (
+              <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
+                <div className="text-sm text-mint mb-2">Transaction Submitted</div>
+                <a
+                  href={`${chain?.blockExplorers?.default?.url}/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-mint hover:text-mint-dark underline break-all"
+                >
+                  {txHash}
+                </a>
+              </div>
+            )}
+            
+            {txError && (
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
+                <div className="text-sm text-red-400">Transaction Error</div>
+                <div className="text-xs text-red-300 mt-1">
+                  {txError.message || 'Transaction failed'}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Footer Info */}

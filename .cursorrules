@@ -1,3 +1,193 @@
 Phorus is a bridge that is directly integrated into hyperliquid. 
 
 Brand design: use a dark, deep-green background with soft, organic mint gradients, a premium high-contrast serif for the main headline, and a clean modern sans-serif for UI, creating a calm, high-end “infrastructure-level AI/crypto” feel. The overall style is minimal, spacious, and confident, with a single mint accent color, pill-shaped buttons, and abstract fluid visuals that communicate scale, trust, and next-generation technology.
+
+LiFi API docs
+General API
+GET /v1/chains
+
+Purpose: List supported chains (IDs/keys + metadata).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/chains"
+
+GET /v1/tokens
+
+Purpose: List tokens known to LI.FI.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/tokens"
+
+GET /v1/token
+
+Purpose: Fetch a single token’s info by chain + token (address or symbol).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/token?chain=137&token=USDC"
+
+GET /v1/tools
+
+Purpose: List supported bridges + exchanges (and what chains they support).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/tools"
+
+GET /v1/connections
+
+Purpose: List possible transfer “connections” between chains/tokens; you must filter (at least a chain/token/bridge/exchange) because the full set is huge.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/connections?fromChain=137&toChain=1"
+
+Gas endpoints
+GET /v1/gas/prices
+
+Purpose: Get recent gas price data for enabled chains.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/gas/prices"
+
+GET /v1/gas/prices/{chainId}
+
+Purpose: Gas prices for one chain.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/gas/prices/1"
+
+GET /v1/gas/suggestion/{chain}
+
+Purpose: Suggest how much native gas a user should have on a chain (optionally includes how much fromToken to send to end up with that gas).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/gas/suggestion/137"
+
+GET /v1/gas/status
+
+Purpose: “Lifuel” status lookup (gas refuel flow).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/gas/status?txHash=0xYOUR_HASH"
+
+Requesting a quote (single-step routes)
+GET /v1/quote
+
+Purpose: Get a single-step quote for swapping/bridging from an exact fromAmount. Returns a Step that includes an estimate and often a transactionRequest you can send with a wallet.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/quote?fromChain=100&toChain=137&fromToken=0x4ecaba5870353805a9f068101a40e0f32ed605c6&toToken=0x2791bca1f2de4661ed88a30c99a7a9449aa84174&fromAmount=1000000&fromAddress=0x552008c0f6870c2f77e5cC1d2eb9bdff03e30Ea0&slippage=0.03"
+
+
+(If you’re using an API key, add --header "x-lifi-api-key: ...".)
+
+GET /v1/quote/toAmount
+
+Purpose: Alternative to /v1/quote: you specify the desired toAmount, and LI.FI computes a suitable fromAmount.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/quote/toAmount?fromChain=1&toChain=137&fromToken=0x0000000000000000000000000000000000000000&toToken=0x2791bca1f2de4661ed88a30c99a7a9449aa84174&toAmount=1000000&fromAddress=0xYOUR_ADDR&slippage=0.005"
+
+Requesting a quote (advanced routes)
+
+Use these when you want multiple steps (bridge + swap combos, etc.) and/or multiple route options.
+
+POST /v1/advanced/routes
+
+Purpose: Request a set of candidate Routes for a transfer request.
+Example
+
+curl --request POST \
+  --url "https://li.quest/v1/advanced/routes" \
+  --header "content-type: application/json" \
+  --data '{
+    "fromChainId": 1,
+    "toChainId": 137,
+    "fromTokenAddress": "0x0000000000000000000000000000000000000000",
+    "toTokenAddress": "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+    "fromAmount": "100000000000000000",
+    "fromAddress": "0xYOUR_ADDR",
+    "toAddress": "0xYOUR_ADDR",
+    "options": { "slippage": 0.005 }
+  }'
+
+POST /v1/advanced/stepTransaction
+
+Purpose: After picking a Route + Step, populate that step with the concrete transaction data you need to sign/send.
+Example
+
+curl --request POST \
+  --url "https://li.quest/v1/advanced/stepTransaction" \
+  --header "content-type: application/json" \
+  --data '{
+    "step": { "/* paste the Step object you selected from /advanced/routes */": true }
+  }'
+
+Transaction status
+GET /v1/status
+
+Purpose: Track the status of a cross-chain transfer. (Helpful to pass fromChain etc. to speed up lookup.)
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/status?txHash=0xYOUR_HASH&fromChain=1&toChain=137"
+
+Integrator fee information
+GET /v1/integrators/{integratorId}
+
+Purpose: Retrieve an integrator’s collected fee balances across chains/tokens.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/integrators/fee-demo"
+
+GET /v1/integrators/{integratorId}/withdraw/{chainId}
+
+Purpose: Get a transaction request to withdraw collected integrator fees (optionally filtered by token list).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/integrators/fee-demo/withdraw/137"
+
+Analytics
+GET /v1/analytics/transfers
+
+Purpose: Fetch up to 1000 transfers filtered by query params.
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/analytics/transfers?integrator=jumper.exchange&status=DONE"
+
+GET /v2/analytics/transfers
+
+Purpose: Paginated analytics transfers (cursor-based).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v2/analytics/transfers?integrator=jumper.exchange&limit=50"
+
+GET /v1/analytics/transfers/summary
+
+Purpose: Aggregated “total received” summary for cross-chain transfers over a time range (grouped by wallet + sending chain).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/analytics/transfers/summary?toChain=137&toToken=0x2791bca1f2de4661ed88a30c99a7a9449aa84174&fromTimestamp=1700000000&toTimestamp=1700500000"
+
+Utilities
+GET /v1/calldata/parse
+
+Purpose: Parse transaction calldata into a JSON overview using known/on-chain ABIs (marked beta).
+Example
+
+curl --request GET \
+  --url "https://li.quest/v1/calldata/parse?calldata=0xYOUR_CALLDATA"
