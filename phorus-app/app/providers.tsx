@@ -2,11 +2,11 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
-import { mainnet, arbitrum, optimism, base } from 'wagmi/chains'
 import { defineChain } from 'viem'
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { useState } from 'react'
+import { chainsArray } from '../scripts/generated-chains'
 
 // Get project ID from environment variable
 // Reown AppKit uses NEXT_PUBLIC_PROJECT_ID or NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
@@ -14,30 +14,8 @@ const projectId = process.env.NEXT_PUBLIC_PROJECT_ID ||
                   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 
                   ''
 
-// Define Hyperliquid as a custom chain
-const hyperliquid = defineChain({
-  id: 1337,
-  name: 'Hyperliquid',
-  nativeCurrency: {
-    name: 'USDC',
-    symbol: 'USDC',
-    decimals: 6,
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://api.hyperliquid.xyz'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'Hyperliquid Explorer',
-      url: 'https://explorer.hyperliquid.xyz',
-    },
-  },
-})
-
-// Configure chains
-const chains = [mainnet, arbitrum, optimism, base, hyperliquid]
+// Use all chains from generated file
+const chains = chainsArray
 
 // Only initialize if we have a valid project ID
 if (!projectId) {

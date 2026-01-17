@@ -18,13 +18,8 @@ interface Token {
   name: string
 }
 
-const chains: Chain[] = [
-  { id: 'ethereum', name: 'Ethereum' },
-  { id: 'arbitrum', name: 'Arbitrum' },
-  { id: 'optimism', name: 'Optimism' },
-  { id: 'base', name: 'Base' },
-  { id: 'hyperliquid', name: 'Hyperliquid' },
-]
+// Import chains from generated file
+import { chainsArray } from '../scripts/generated-chains'
 
 // Popular tokens to show first (ordered by popularity)
 const POPULAR_TOKENS = [
@@ -34,6 +29,40 @@ const POPULAR_TOKENS = [
   'FRAX', 'CRV', 'SNX', 'MKR', 'LDO', 'RETH',
   'STETH', 'WSTETH', 'EZETH', 'WEETH', 'RSETH'
 ]
+
+// Popular chains to prioritize (ordered by popularity)
+const POPULAR_CHAINS = ['eth', 'arb', 'bas', 'opt', 'pol', 'ava', 'bsc', 'hpl']
+
+// Use all chains from LiFi, sorted by popularity
+// Map chains to our Chain interface, using lifiKey for id (LiFi key like 'eth', 'arb', 'hpl')
+const chains: Chain[] = chainsArray
+  .map((chain: any) => ({
+    id: chain.lifiKey || String(chain.id) || 'eth', // LiFi key (e.g., 'eth', 'arb', 'hpl')
+    name: chain.name || 'Unknown Chain',
+  }))
+  .sort((a, b) => {
+    // Get index in popular chains (lower index = more popular)
+    const aPopularIndex = POPULAR_CHAINS.indexOf(a.id)
+    const bPopularIndex = POPULAR_CHAINS.indexOf(b.id)
+    
+    // Both are popular - sort by popularity order
+    if (aPopularIndex !== -1 && bPopularIndex !== -1) {
+      return aPopularIndex - bPopularIndex
+    }
+    
+    // Only a is popular - a comes first
+    if (aPopularIndex !== -1) {
+      return -1
+    }
+    
+    // Only b is popular - b comes first
+    if (bPopularIndex !== -1) {
+      return 1
+    }
+    
+    // Neither is popular - sort alphabetically by name
+    return a.name.localeCompare(b.name)
+  })
 
 // Tokens available per chain (fetched from LiFi API)
 const getTokensForChain = (chainId: string): Token[] => {
@@ -2899,7 +2928,7 @@ const getTokensForChain = (chainId: string): Token[] => {
       { symbol: 'USDA', name: 'USDA' },
       { symbol: 'USDAF', name: 'Asymmetry USDaf' },
       { symbol: 'USDAI', name: 'USDai' },
-      { symbol: 'USDC', name: 'OpenEden USDC Vault' },
+      { symbol: 'USDC', name: 'USD Coin' },
       { symbol: 'USDC RWA', name: 'LeadBlock USDC RWA' },
       { symbol: 'USDCV', name: 'USD CoinVertible' },
       { symbol: 'USDD', name: 'USDD' },
@@ -5537,7 +5566,7 @@ const getTokensForChain = (chainId: string): Token[] => {
       { symbol: 'UP', name: 'UP' },
       { symbol: 'UPHL', name: 'Upheaval Token' },
       { symbol: 'UPUMP', name: 'Unit Pump Fun' },
-      { symbol: 'USDC', name: 'USDC (Spot)' },
+      { symbol: 'USDC', name: 'USD Coin' },
       { symbol: 'USDE', name: 'USDe' },
       { symbol: 'USDH', name: 'USDH' },
       { symbol: 'USDHL', name: 'Hyper USD' },
@@ -5597,10 +5626,12 @@ const getTokensForChain = (chainId: string): Token[] => {
 export default function BridgePage() {
   const { address, isConnected, chain } = useAccount()
   
+  // Find Hyperliquid chain (hpl key = 1337)
+  const hyperliquidChain = chains.find(c => (c as any).id === 'hpl') || chains[0]
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
-  const [toChain, setToChain] = useState<Chain>(chains[4]) // Hyperliquid
-  const [fromToken, setFromToken] = useState<Token>(getTokensForChain(chains[0].id)[0])
-  const [toToken, setToToken] = useState<Token>(getTokensForChain(chains[4].id)[0])
+  const [toChain, setToChain] = useState<Chain>(hyperliquidChain)
+  const [fromToken, setFromToken] = useState<Token>(getTokensForChain((chains[0] as any).id || 'eth')[0])
+  const [toToken, setToToken] = useState<Token>(getTokensForChain((hyperliquidChain as any).id || 'hpl')[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
   
@@ -5626,7 +5657,7 @@ export default function BridgePage() {
     const chainTokens = TOKEN_ADDRESSES[fromChain.id]
     const address = chainTokens?.[fromToken.symbol] || TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol]
     // For Hyperliquid USDT, use the same address as USDC for now (may need to be updated when USDT is fully enabled)
-    if (fromChain.id === 'hyperliquid' && fromToken.symbol === 'USDT') {
+    if (((fromChain as any).id === 'hpl' || (fromChain as any).id === 'hyperliquid') && fromToken.symbol === 'USDT') {
       // USDT on Hyperliquid may use the same contract as USDC or may not be fully enabled yet
       return chainTokens?.['USDC'] as `0x${string}` | undefined
     }
@@ -5704,14 +5735,20 @@ export default function BridgePage() {
     }
   }, [showFromSelector, showToSelector])
 
+  // Track the transaction hash that we're showing success for
+  const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
+  // Track if user manually dismissed the popup
+  const [dismissedTxHashes, setDismissedTxHashes] = useState<Set<string>>(new Set())
+
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
-    if (isConfirmed && txHash) {
+    if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash)) {
       // Store details before resetting
       setSuccessDetails({
         fromToken: fromToken.symbol,
         toChain: toChain.name,
       })
+      setSuccessTxHash(txHash)
       
       // Reset form after a short delay to show popup
       const timer = setTimeout(() => {
@@ -5721,11 +5758,23 @@ export default function BridgePage() {
         setNeedsApproval(false)
         setChainMismatch(false)
         setSuccessDetails(null)
+        setSuccessTxHash(null)
+        // Mark this txHash as dismissed so it won't show again
+        setDismissedTxHashes(prev => new Set(prev).add(txHash))
       }, 5000) // Show popup for 5 seconds
       
       return () => clearTimeout(timer)
     }
-  }, [isConfirmed, txHash, fromToken.symbol, toChain.name])
+  }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes])
+
+  // Clear success state when starting a new transaction (form parameters change)
+  useEffect(() => {
+    // If we have success details but the txHash doesn't match, clear it
+    if (successDetails && txHash !== successTxHash) {
+      setSuccessDetails(null)
+      setSuccessTxHash(null)
+    }
+  }, [fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress, successDetails, txHash, successTxHash])
 
   // Update token when chain changes to ensure token exists on new chain
   useEffect(() => {
@@ -5764,7 +5813,7 @@ export default function BridgePage() {
           toToken: toToken.symbol,
           fromAmount: amount,
           fromAddress: address,
-          toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
+          toAddress: (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && hyperliquidAddress ? hyperliquidAddress : address,
           slippage: 0.03,
         })
 
@@ -5796,7 +5845,7 @@ export default function BridgePage() {
               toToken: toToken.symbol,
               fromAmount: amount,
               fromAddress: address,
-              toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
+              toAddress: ((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && hyperliquidAddress ? hyperliquidAddress : address,
               slippage: 0.03, // 3% slippage
             })
           } catch (quoteError: any) {
@@ -6120,21 +6169,120 @@ export default function BridgePage() {
                           ? chains.filter(c => c.id === fromChainFilter)
                           : chains
                         
+                        const searchQueryLower = fromSearchQuery?.toLowerCase() || ''
+                        const isPopularTokenSearch = fromSearchQuery && POPULAR_TOKENS.includes(fromSearchQuery.toUpperCase())
                         const allTokens = filteredChains.flatMap(chain => 
                           getTokensForChain(chain.id)
-                            .filter(token => 
-                              !fromSearchQuery || 
-                              token.symbol.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
-                              token.name.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
-                              chain.name.toLowerCase().includes(fromSearchQuery.toLowerCase())
-                            )
-                            .map(token => ({ ...token, chain }))
+                            .filter(token => {
+                              if (!fromSearchQuery) return true
+                              
+                              // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
+                              if (isPopularTokenSearch) {
+                                const tokenSymbolUpper = token.symbol.toUpperCase()
+                                const searchUpper = fromSearchQuery.toUpperCase()
+                                
+                                // If symbol exactly matches, include it (but we'll prioritize standard names)
+                                if (tokenSymbolUpper === searchUpper) {
+                                  return true
+                                }
+                                
+                                // Otherwise, only include if symbol contains the query (not just name)
+                                return token.symbol.toLowerCase().includes(searchQueryLower)
+                              }
+                              
+                              // Normal search: match symbol, name, or chain
+                              return token.symbol.toLowerCase().includes(searchQueryLower) ||
+                                     token.name.toLowerCase().includes(searchQueryLower) ||
+                                     chain.name.toLowerCase().includes(searchQueryLower)
+                            })
+                            .map(token => { 
+                              const nameLower = token.name.toLowerCase()
+                              const isVaultToken = nameLower.includes('vault') || 
+                                                   nameLower.includes('pool') || 
+                                                   nameLower.includes('yield') ||
+                                                   nameLower.includes('strategy')
+                              
+                              return {
+                                ...token, 
+                                chain,
+                                isVaultToken,
+                                // Add match score for sorting: exact symbol match = highest priority
+                                matchScore: fromSearchQuery ? (
+                                  token.symbol.toLowerCase() === searchQueryLower ? (
+                                    isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
+                                  ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
+                                  token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
+                                  0 // Only name/chain match
+                                ) : 0
+                              }
+                            })
                         )
                         
-                        // Remove duplicates by symbol
-                        const uniqueTokens = Array.from(
-                          new Map(allTokens.map(t => [t.symbol, t])).values()
-                        )
+                        // Only remove duplicates when NOT searching - when searching, show all instances across chains
+                        // When deduplicating, keep the token from the most popular chain
+                        let uniqueTokens = fromSearchQuery
+                          ? allTokens // Show all instances when searching
+                          : (() => {
+                              const tokenMap = new Map<string, typeof allTokens[0]>()
+                              for (const token of allTokens) {
+                                const existing = tokenMap.get(token.symbol)
+                                if (!existing) {
+                                  tokenMap.set(token.symbol, token)
+                                } else {
+                                  // If we already have this token, keep the one from the more popular chain
+                                  const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
+                                  const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
+                                  if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
+                                    tokenMap.set(token.symbol, token)
+                                  }
+                                }
+                              }
+                              return Array.from(tokenMap.values())
+                            })()
+                        
+                        // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
+                        uniqueTokens = uniqueTokens.sort((a, b) => {
+                          // First: prioritize by match score (exact symbol matches first)
+                          if (a.matchScore !== b.matchScore) {
+                            return b.matchScore - a.matchScore
+                          }
+                          
+                          const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
+                          const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
+                          const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
+                          const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
+                          
+                          // Both are popular tokens - maintain order
+                          if (aTokenIndex !== -1 && bTokenIndex !== -1) {
+                            if (aTokenIndex !== bTokenIndex) {
+                              return aTokenIndex - bTokenIndex
+                            }
+                            // Same token, prioritize popular chains
+                            if (aChainIndex !== -1 && bChainIndex !== -1) {
+                              return aChainIndex - bChainIndex
+                            }
+                            if (aChainIndex !== -1) return -1
+                            if (bChainIndex !== -1) return 1
+                            return a.chain.name.localeCompare(b.chain.name)
+                          }
+                          
+                          // Only a is popular
+                          if (aTokenIndex !== -1) return -1
+                          // Only b is popular
+                          if (bTokenIndex !== -1) return 1
+                          
+                          // Neither is popular - prioritize popular chains
+                          if (aChainIndex !== -1 && bChainIndex !== -1) {
+                            return aChainIndex - bChainIndex
+                          }
+                          if (aChainIndex !== -1) return -1
+                          if (bChainIndex !== -1) return 1
+                          
+                          // Sort by token symbol, then chain name
+                          const symbolCompare = a.symbol.localeCompare(b.symbol)
+                          if (symbolCompare !== 0) return symbolCompare
+                          return a.chain.name.localeCompare(b.chain.name)
+                        })
                         
                         if (uniqueTokens.length === 0) {
                           return (
@@ -6367,21 +6515,120 @@ export default function BridgePage() {
                           ? chains.filter(c => c.id === toChainFilter)
                           : chains
                         
+                        const searchQueryLower = toSearchQuery?.toLowerCase() || ''
+                        const isPopularTokenSearch = toSearchQuery && POPULAR_TOKENS.includes(toSearchQuery.toUpperCase())
                         const allTokens = filteredChains.flatMap(chain => 
                           getTokensForChain(chain.id)
-                            .filter(token => 
-                              !toSearchQuery || 
-                              token.symbol.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
-                              token.name.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
-                              chain.name.toLowerCase().includes(toSearchQuery.toLowerCase())
-                            )
-                            .map(token => ({ ...token, chain }))
+                            .filter(token => {
+                              if (!toSearchQuery) return true
+                              
+                              // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
+                              if (isPopularTokenSearch) {
+                                const tokenSymbolUpper = token.symbol.toUpperCase()
+                                const searchUpper = toSearchQuery.toUpperCase()
+                                
+                                // If symbol exactly matches, include it (but we'll prioritize standard names)
+                                if (tokenSymbolUpper === searchUpper) {
+                                  return true
+                                }
+                                
+                                // Otherwise, only include if symbol contains the query (not just name)
+                                return token.symbol.toLowerCase().includes(searchQueryLower)
+                              }
+                              
+                              // Normal search: match symbol, name, or chain
+                              return token.symbol.toLowerCase().includes(searchQueryLower) ||
+                                     token.name.toLowerCase().includes(searchQueryLower) ||
+                                     chain.name.toLowerCase().includes(searchQueryLower)
+                            })
+                            .map(token => { 
+                              const nameLower = token.name.toLowerCase()
+                              const isVaultToken = nameLower.includes('vault') || 
+                                                   nameLower.includes('pool') || 
+                                                   nameLower.includes('yield') ||
+                                                   nameLower.includes('strategy')
+                              
+                              return {
+                                ...token, 
+                                chain,
+                                isVaultToken,
+                                // Add match score for sorting: exact symbol match = highest priority
+                                matchScore: toSearchQuery ? (
+                                  token.symbol.toLowerCase() === searchQueryLower ? (
+                                    isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
+                                  ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
+                                  token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
+                                  0 // Only name/chain match
+                                ) : 0
+                              }
+                            })
                         )
                         
-                        // Remove duplicates by symbol
-                        const uniqueTokens = Array.from(
-                          new Map(allTokens.map(t => [t.symbol, t])).values()
-                        )
+                        // Only remove duplicates when NOT searching - when searching, show all instances across chains
+                        // When deduplicating, keep the token from the most popular chain
+                        let uniqueTokens = toSearchQuery
+                          ? allTokens // Show all instances when searching
+                          : (() => {
+                              const tokenMap = new Map<string, typeof allTokens[0]>()
+                              for (const token of allTokens) {
+                                const existing = tokenMap.get(token.symbol)
+                                if (!existing) {
+                                  tokenMap.set(token.symbol, token)
+                                } else {
+                                  // If we already have this token, keep the one from the more popular chain
+                                  const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
+                                  const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
+                                  if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
+                                    tokenMap.set(token.symbol, token)
+                                  }
+                                }
+                              }
+                              return Array.from(tokenMap.values())
+                            })()
+                        
+                        // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
+                        uniqueTokens = uniqueTokens.sort((a, b) => {
+                          // First: prioritize by match score (exact symbol matches first)
+                          if (a.matchScore !== b.matchScore) {
+                            return b.matchScore - a.matchScore
+                          }
+                          
+                          const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
+                          const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
+                          const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
+                          const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
+                          
+                          // Both are popular tokens - maintain order
+                          if (aTokenIndex !== -1 && bTokenIndex !== -1) {
+                            if (aTokenIndex !== bTokenIndex) {
+                              return aTokenIndex - bTokenIndex
+                            }
+                            // Same token, prioritize popular chains
+                            if (aChainIndex !== -1 && bChainIndex !== -1) {
+                              return aChainIndex - bChainIndex
+                            }
+                            if (aChainIndex !== -1) return -1
+                            if (bChainIndex !== -1) return 1
+                            return a.chain.name.localeCompare(b.chain.name)
+                          }
+                          
+                          // Only a is popular
+                          if (aTokenIndex !== -1) return -1
+                          // Only b is popular
+                          if (bTokenIndex !== -1) return 1
+                          
+                          // Neither is popular - prioritize popular chains
+                          if (aChainIndex !== -1 && bChainIndex !== -1) {
+                            return aChainIndex - bChainIndex
+                          }
+                          if (aChainIndex !== -1) return -1
+                          if (bChainIndex !== -1) return 1
+                          
+                          // Sort by token symbol, then chain name
+                          const symbolCompare = a.symbol.localeCompare(b.symbol)
+                          if (symbolCompare !== 0) return symbolCompare
+                          return a.chain.name.localeCompare(b.chain.name)
+                        })
                         
                         if (uniqueTokens.length === 0) {
                           return (
@@ -6436,7 +6683,7 @@ export default function BridgePage() {
               </div>
 
               {/* Hyperliquid Wallet Address Input */}
-              {toChain.id === 'hyperliquid' && (
+              {((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && (
                 <div className="space-y-2">
                   <label className="text-xs text-gray-400 font-medium">Hyperliquid Wallet Address (Optional)</label>
                   <input
@@ -6621,7 +6868,7 @@ export default function BridgePage() {
           </div>
 
           {/* Success Popup */}
-          {isConfirmed && txHash && successDetails && (
+          {isConfirmed && txHash && successDetails && txHash === successTxHash && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
               <div className="bridge-card rounded-3xl p-8 max-w-md w-full text-center space-y-4">
                 <div className="flex justify-center">
@@ -6646,12 +6893,17 @@ export default function BridgePage() {
                   </a>
                   <button
                     onClick={() => {
+                      // Mark this txHash as dismissed immediately to prevent popup from reappearing
+                      if (txHash) {
+                        setDismissedTxHashes(prev => new Set(prev).add(txHash))
+                      }
                       setAmount('')
                       setQuote(null)
                       setQuoteError(null)
                       setNeedsApproval(false)
                       setChainMismatch(false)
                       setSuccessDetails(null)
+                      setSuccessTxHash(null)
                     }}
                     className="pill-button w-full mt-4"
                   >

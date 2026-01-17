@@ -5,14 +5,12 @@ const LIFI_API_BASE = 'https://li.quest/v1'
 // This should be set in .env.local as NEXT_PUBLIC_LIFI_INTEGRATOR_ID
 const LIFI_INTEGRATOR_ID = process.env.NEXT_PUBLIC_LIFI_INTEGRATOR_ID || ''
 
+// Import chain mappings from generated file
+import { KEY_TO_CHAIN_ID } from '../../scripts/generated-chains'
+
 // Chain ID mapping (LiFi uses numeric chain IDs)
-export const CHAIN_IDS: Record<string, number> = {
-  ethereum: 1,
-  arbitrum: 42161,
-  optimism: 10,
-  base: 8453,
-  hyperliquid: 1337, // Hyperliquid L1 chain ID
-}
+// Maps LiFi chain keys (like 'eth', 'arb') to numeric chain IDs
+export const CHAIN_IDS: Record<string, number> = KEY_TO_CHAIN_ID
 
 // Common token addresses (mainnet addresses, will work on L2s via LiFi)
 
@@ -5516,7 +5514,7 @@ export const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
     'UP': '0xAA60905298f022Ad8EfAB6d4348BC61b00000000',
     'UPHL': '0xcA30BC8e4e2029E53D3A52867dF2a7d100000000',
     'UPUMP': '0x544E60f98a36D7B22c0fb5824B84F79500000000',
-    'USDC': '0x6d1e7cde53bA9467B783Cb7c530CE05400000000',
+    'USDC': '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Hyperliquid native USDC (from LiFi)
     'USDE': '0x2E6D84f2d7CA82e6581E03523e4389f700000000',
     'USDH': '0x54e00a5988577cb0B0c9Ab0Cb6Ef7f4b00000000',
     'USDHL': '0xd289C79872A9eace15CC4CaDb030661F00000000',
@@ -5648,14 +5646,39 @@ export interface RouteResponse {
 /**
  * Helper function to find token address with fallbacks
  */
+// Map LiFi chain keys to TOKEN_ADDRESSES keys
+function getTokenAddressKey(chainId: string): string {
+  const chainKeyMap: Record<string, string> = {
+    'eth': 'ethereum',
+    'arb': 'arbitrum',
+    'bas': 'base',
+    'opt': 'optimism',
+    'pol': 'polygon',
+    'ava': 'avalanche',
+    'bsc': 'bsc',
+    'hpl': 'hyperliquid',
+    'hyperliquid': 'hyperliquid',
+    'ethereum': 'ethereum',
+    'arbitrum': 'arbitrum',
+    'base': 'base',
+    'optimism': 'optimism',
+    'polygon': 'polygon',
+    'avalanche': 'avalanche',
+  }
+  return chainKeyMap[chainId] || chainId
+}
+
 function findTokenAddress(symbol: string, chainId: string): string | null {
   // For native tokens (ETH), use the zero address
   if (symbol === 'ETH' || symbol === 'WETH') {
     return '0x0000000000000000000000000000000000000000'
   }
   
+  // Map chain ID to TOKEN_ADDRESSES key
+  const tokenAddressKey = getTokenAddressKey(chainId)
+  
   // Try exact match on the chain
-  const chainTokens = TOKEN_ADDRESSES[chainId]
+  const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
   if (chainTokens?.[symbol]) {
     return chainTokens[symbol]
   }
@@ -5675,9 +5698,9 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
     }
   }
   
-  // Try ethereum with case-insensitive
+  // Try ethereum as fallback with case-insensitive
   const ethTokens = TOKEN_ADDRESSES['ethereum']
-  if (ethTokens) {
+  if (ethTokens && tokenAddressKey !== 'ethereum') {
     for (const [key, address] of Object.entries(ethTokens)) {
       if (key.toUpperCase() === symbolUpper) {
         return address
