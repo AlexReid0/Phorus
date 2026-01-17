@@ -250,6 +250,11 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
     const tokenAddressKey = getTokenAddressKey(chainId)
     const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
     
+    // Special handling for USDC - always use perps address
+    if (symbol === 'USDC (perps)' || symbol === 'USDC') {
+      return '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+    }
+    
     // Check if we have the token in TOKEN_ADDRESSES (e.g., USDC (perps))
     if (chainTokens?.[symbol]) {
       const address = chainTokens[symbol]
@@ -480,14 +485,19 @@ export async function getRoutes(params: {
       return null
     }
 
-    // Look up token addresses using helper function
+    // Special case: For Hyperliquid USDC, always use perps address
+    let toTokenAddress: string | null = null
+    if (toChainId === 1337) {
+      if (params.toToken === 'USDC (perps)' || params.toToken === 'USDC') {
+        toTokenAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+        console.log(`[getRoutes] Using known address for USDC (perps) on Hyperliquid:`, toTokenAddress)
+      }
+    }
+    
+    // Look up token addresses using helper function (only if not already set by special case)
     let fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
-    let toTokenAddress = findTokenAddress(params.toToken, params.toChain)
-
-    // Special case: For "USDC (perps)" on Hyperliquid, use the known address directly
-    if (toChainId === 1337 && params.toToken === 'USDC (perps)') {
-      toTokenAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
-      console.log(`Using known address for USDC (perps) on Hyperliquid:`, toTokenAddress)
+    if (!toTokenAddress) {
+      toTokenAddress = findTokenAddress(params.toToken, params.toChain)
     }
 
     // For Hyperliquid tokens, ALWAYS try querying LiFi API if not found in TOKEN_ADDRESSES
@@ -589,6 +599,14 @@ export async function getRoutes(params: {
           }),
         },
       }),
+    })
+
+    console.log('[getRoutes] Request sent to LiFi API:', {
+      toChainId,
+      toToken: params.toToken,
+      toTokenAddress,
+      fromToken: params.fromToken,
+      fromTokenAddress,
     })
 
     if (!response.ok) {

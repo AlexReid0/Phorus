@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain, useSignTypedData } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi, isAddress, getAddress } from 'viem'
 import Link from 'next/link'
@@ -37,7 +37,6 @@ const chains: Chain[] = chainsArray
 
     // Only a is popular - a comes first
     if (aPopularIndex !== -1) {
-      ``
       return -1
     }
 
@@ -60,6 +59,7 @@ export default function BridgePage() {
   const [toToken, setToToken] = useState<Token>(getTokensForChain((hyperliquidChain as any).id || 'hpl')[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
+  const [useCurrentWallet, setUseCurrentWallet] = useState<boolean>(false)
   const [isMounted, setIsMounted] = useState(false)
 
   // State for unified selector
@@ -82,13 +82,53 @@ export default function BridgePage() {
   // Compute token address based on current chain and token symbol
   const tokenAddress = useMemo(() => {
     if (fromToken.symbol === 'ETH') return undefined
-    const chainTokens = TOKEN_ADDRESSES[fromChain.id]
-    const address = chainTokens?.[fromToken.symbol] || TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol]
+    
+    // Map chain ID to TOKEN_ADDRESSES key (e.g., 'bas' -> 'base', 'eth' -> 'ethereum')
+    const getTokenAddressKey = (chainId: string): string => {
+      const chainKeyMap: Record<string, string> = {
+        'eth': 'ethereum',
+        'arb': 'arbitrum',
+        'bas': 'base',
+        'opt': 'optimism',
+        'pol': 'polygon',
+        'ava': 'avalanche',
+        'bsc': 'bsc',
+        'hpl': 'hyperliquid',
+        'hyperliquid': 'hyperliquid',
+        'ethereum': 'ethereum',
+        'arbitrum': 'arbitrum',
+        'base': 'base',
+        'optimism': 'optimism',
+        'polygon': 'polygon',
+        'avalanche': 'avalanche',
+      }
+      return chainKeyMap[chainId] || chainId
+    }
+    
+    const tokenAddressKey = getTokenAddressKey(fromChain.id)
+    const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
+    let address = chainTokens?.[fromToken.symbol]
+    
+    // If not found, try ethereum as fallback
+    if (!address) {
+      address = TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol]
+    }
+    
     // For Hyperliquid USDT, use the same address as USDC for now (may need to be updated when USDT is fully enabled)
     if (((fromChain as any).id === 'hpl' || (fromChain as any).id === 'hyperliquid') && fromToken.symbol === 'USDT') {
       // USDT on Hyperliquid may use the same contract as USDC or may not be fully enabled yet
-      return chainTokens?.['USDC'] as `0x${string}` | undefined
+      address = chainTokens?.['USDC']
     }
+    
+    console.log('[Balance] Token address lookup:', {
+      chain: fromChain.id,
+      tokenAddressKey,
+      token: fromToken.symbol,
+      foundAddress: address,
+      hasChainTokens: !!chainTokens,
+      chainTokensKeys: chainTokens ? Object.keys(chainTokens).slice(0, 5) : []
+    })
+    
     return address as `0x${string}` | undefined
   }, [fromChain.id, fromToken.symbol])
 
@@ -100,26 +140,52 @@ export default function BridgePage() {
     },
   })
 
+  // Debug logging for balance query
+  useEffect(() => {
+    if (fromToken.symbol !== 'ETH' && tokenAddress) {
+      console.log('[Balance Query]', {
+        tokenAddress,
+        tokenSymbol: fromToken.symbol,
+        chain: fromChain.id,
+        address,
+        isConnected,
+        tokenBalance: tokenBalance ? {
+          value: tokenBalance.value?.toString(),
+          formatted: tokenBalance.formatted,
+          decimals: tokenBalance.decimals,
+          symbol: tokenBalance.symbol
+        } : null,
+        isLoadingTokenBalance
+      })
+    }
+  }, [tokenAddress, fromToken.symbol, fromChain.id, address, isConnected, tokenBalance, isLoadingTokenBalance])
+
   // Use token balance if available, otherwise native balance (only for ETH)
   // If token is not ETH and we don't have a valid token address or balance, show null/zero
   const balance = useMemo(() => {
+    // For ETH, always use native balance
     if (fromToken.symbol === 'ETH') {
       return nativeBalance
     }
-    // If we have a token address but no balance data yet, return undefined to show loading
-    if (tokenAddress && isLoadingTokenBalance) {
-      return undefined
-    }
-    // If we have token balance, use it
-    if (tokenBalance) {
-      return tokenBalance
-    }
-    // If no token address (e.g., unsupported token on chain), return null to show no balance
+    
+    // For non-ETH tokens, we need a token address to query balance
     if (!tokenAddress) {
+      // No token address found - return null to show no balance
       return null
     }
-    // Fallback to native balance only if token query completed but returned no balance
-    return nativeBalance
+    
+    // If we have a token address but balance is still loading, return undefined to show loading
+    if (isLoadingTokenBalance) {
+      return undefined
+    }
+    
+    // If we have token balance data, use it (even if it's 0)
+    if (tokenBalance !== undefined && tokenBalance !== null) {
+      return tokenBalance
+    }
+    
+    // Token query completed but no balance returned - return null (user has 0 balance)
+    return null
   }, [fromToken.symbol, tokenAddress, tokenBalance, nativeBalance, isLoadingTokenBalance])
 
   // Quote state
@@ -203,6 +269,21 @@ export default function BridgePage() {
     })
   }, [txHash, isPendingTx, isConfirming, isConfirmed, successTxHash, dismissedTxHashes, selectedRoute])
 
+  // Reset all form state function
+  const resetForm = useCallback(() => {
+    console.log('[resetForm] Resetting all form state')
+    setAmount('')
+    setQuote(null)
+    setRoutes(null)
+    setSelectedRoute(null)
+    setQuoteError(null)
+    setNeedsApproval(false)
+    setChainMismatch(false)
+    setLoadingQuote(false)
+    // Note: approvalHash and txHash are from wagmi hooks and will be cleared when new transactions start
+    // We can't directly reset them, but they'll be replaced on next transaction
+  }, [])
+
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
     console.log('[useEffect: success] Checking success conditions', {
@@ -214,29 +295,30 @@ export default function BridgePage() {
     })
 
     if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash)) {
-      console.log('[useEffect: success] Conditions met, setting success state and scheduling reset')
-      // Store details before resetting
+      console.log('[useEffect: success] Conditions met, setting success state')
+      // Store details for popup FIRST
       setSuccessDetails({
         fromToken: fromToken.symbol,
         toChain: toChain.name,
       })
       setSuccessTxHash(txHash)
-
-      // Reset form after a short delay to show popup
-      const timer = setTimeout(() => {
-        console.log('[useEffect: success] Resetting form after 5 seconds')
+      
+      // Mark this txHash as dismissed so it won't show again
+      setDismissedTxHashes(prev => new Set(prev).add(txHash))
+      
+      // Reset form values (but keep successDetails and successTxHash for popup)
+      // Use a small delay to ensure React has processed the successDetails state update
+      setTimeout(() => {
+        console.log('[useEffect: success] Resetting form after popup state is set')
         setAmount('')
         setQuote(null)
+        setRoutes(null)
+        setSelectedRoute(null)
         setQuoteError(null)
         setNeedsApproval(false)
         setChainMismatch(false)
-        setSuccessDetails(null)
-        setSuccessTxHash(null)
-        // Mark this txHash as dismissed so it won't show again
-        setDismissedTxHashes(prev => new Set(prev).add(txHash))
-      }, 5000) // Show popup for 5 seconds
-
-      return () => clearTimeout(timer)
+        setLoadingQuote(false)
+      }, 50) // Small delay to let popup render
     }
   }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes])
 
@@ -270,6 +352,13 @@ export default function BridgePage() {
       setHyperliquidAddress('')
     }
   }, [toChain.id])
+
+  // Sync address when useCurrentWallet is enabled
+  useEffect(() => {
+    if (useCurrentWallet && address) {
+      setHyperliquidAddress(address)
+    }
+  }, [useCurrentWallet, address])
 
   // Auto-match destination token to source token when destination is Hyperliquid
   useEffect(() => {
@@ -347,10 +436,18 @@ export default function BridgePage() {
           // Use the same routing as advanced mode
           // LiFi will handle the multi-step route automatically
           try {
-            // For direct mode, default to USDC (perps); for advanced mode, use selected token
+            // For direct mode, always use perps USDC; for advanced mode, use selected token
             const targetToToken = isHyperliquidDirect 
-              ? (toToken.symbol === 'USDC (perps)' ? toToken.symbol : 'USDC (perps)')
+              ? 'USDC (perps)'
               : toToken.symbol
+            
+            console.log('[Routes] Fetching routes with:', {
+              isHyperliquidDirect,
+              targetToToken,
+              toTokenSymbol: toToken.symbol,
+              fromChain: fromChain.id,
+              toChain: toChain.id
+            })
             
             // For advanced mode, use the connected wallet address; for direct mode, use the entered Hyperliquid address
             const targetToAddress = isHyperliquidDirect 
@@ -370,6 +467,19 @@ export default function BridgePage() {
 
             if (routesData && routesData.routes && routesData.routes.length > 0) {
               console.log('Found routes to Hyperliquid:', routesData.routes.length, 'routes')
+              
+              // Log the toToken address in the first step to verify routes API used correct address
+              if (routesData.routes[0]?.steps?.[0]?.action?.toToken) {
+                const stepToToken = routesData.routes[0].steps[0].action.toToken
+                const expectedAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' // perps address
+                console.log('[RoutesResponse] First step toToken from routes API:', {
+                  expectedAddress,
+                  actualAddress: stepToToken.address,
+                  symbol: stepToToken.symbol,
+                  matches: stepToToken.address?.toLowerCase() === expectedAddress.toLowerCase()
+                })
+              }
+              
               setRoutes(routesData)
 
               // Find the best route - prefer routes that bridge directly to Hyperliquid
@@ -406,7 +516,7 @@ export default function BridgePage() {
 
               if (bestRoute && bestRoute.steps && bestRoute.steps.length > 0) {
                 setSelectedRoute(bestRoute)
-                const firstStep = bestRoute.steps[0]
+                let firstStep = bestRoute.steps[0]
 
                 // Check if this route ends on Hyperliquid
                 const lastStep = bestRoute.steps[bestRoute.steps.length - 1]
@@ -423,7 +533,34 @@ export default function BridgePage() {
                 // Route should end on Hyperliquid when using direct mode
                 // LiFi will handle the routing automatically
 
+                // CRITICAL: Check if the step has the correct perps address
+                // If not, we need to reject this route and try again, as modifying the step causes 422 errors
+                if (isHyperliquidDirect && firstStep.action?.toToken) {
+                  const expectedAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' // perps address
+                  const actualAddress = firstStep.action.toToken.address
+                  const addressMatches = actualAddress?.toLowerCase() === expectedAddress.toLowerCase()
+                  
+                  console.log('[StepCheck] Verifying step toToken address:', {
+                    expectedAddress,
+                    actualAddress,
+                    addressMatches,
+                    targetToToken
+                  })
+                  
+                  // If the address is wrong, reject this route and throw an error
+                  // This will cause the quote fetch to fail and the user can try again
+                  if (!addressMatches) {
+                    const errorMsg = `Routes API returned incorrect token address. Expected ${expectedAddress} for perps account, but got ${actualAddress}. Please try again.`
+                    console.error('[StepCheck]', errorMsg)
+                    setQuoteError(errorMsg)
+                    setLoadingQuote(false)
+                    return
+                  }
+                }
+
                 // Get transaction data for the first step
+                // NOTE: We cannot modify the step before calling getStepTransaction as it causes 422 errors
+                // The routes API should return the correct address based on toTokenAddress we provided
                 try {
                   const stepWithTx = await getStepTransaction(firstStep)
 
@@ -448,6 +585,39 @@ export default function BridgePage() {
                     fromTokenAddress = chainTokens?.[fromToken.symbol]
                   }
                   
+                  // CRITICAL: Determine the correct toToken address for Hyperliquid
+                  let toTokenAddress = stepAction?.toToken?.address
+                  const isHyperliquid = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+                  if (isHyperliquid && isHyperliquidDirect) {
+                    // Always use perps address for Hyperliquid direct mode
+                    toTokenAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+                    console.log('[StepAction] Overriding toToken address to PERPS:', toTokenAddress)
+                  } else if (!toTokenAddress) {
+                    // For other tokens, look it up
+                    const chainTokens = TOKEN_ADDRESSES[toChain.id] || TOKEN_ADDRESSES['ethereum']
+                    toTokenAddress = chainTokens?.[toToken.symbol] || stepAction?.toToken?.address || ''
+                    console.log('[StepAction] Using address from lookup:', toTokenAddress)
+                  }
+                  
+                  // CRITICAL: Update stepWithTx.action.toToken.address directly so it's used in the actual transaction
+                  if (stepWithTx.action) {
+                    stepWithTx.action.toToken = {
+                      ...stepWithTx.action.toToken,
+                      address: toTokenAddress,
+                      symbol: toToken.symbol,
+                    }
+                    console.log('[StepAction] Updated stepWithTx.action.toToken.address to:', toTokenAddress)
+                  }
+                  
+                  // Also update firstStep.action if it exists (for fallback)
+                  if (firstStep.action) {
+                    firstStep.action.toToken = {
+                      ...firstStep.action.toToken,
+                      address: toTokenAddress,
+                      symbol: toToken.symbol,
+                    }
+                  }
+                  
                   // Build complete action object with all required fields
                   const quoteAction = {
                     ...stepAction,
@@ -459,6 +629,7 @@ export default function BridgePage() {
                     },
                     toToken: {
                       ...stepAction?.toToken,
+                      address: toTokenAddress,
                       symbol: toToken.symbol,
                       decimals: stepAction?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6),
                     },
@@ -1019,7 +1190,7 @@ export default function BridgePage() {
                 <label className="text-sm text-gray-400 font-medium">From</label>
                 {isConnected && balance && (
                   <span className="text-xs text-gray-500">
-                    Balance: {parseFloat(balance.formatted).toFixed(4)} {balance.symbol}
+                    Balance: {parseFloat(balance.formatted).toFixed(4)} {fromToken.symbol}
                   </span>
                 )}
                 {isConnected && balance === null && fromToken.symbol !== 'ETH' && (
@@ -1364,7 +1535,9 @@ export default function BridgePage() {
             {/* To Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <label className="text-sm text-gray-400 font-medium">To</label>
+                {showCustomToField && (
+                  <label className="text-sm text-gray-400 font-medium">To</label>
+                )}
                 {isConnected && hyperliquidAddress && !showCustomToField && (
                   <span className="text-xs text-mint font-medium">
                     One-Step to HyperCore
@@ -1378,39 +1551,55 @@ export default function BridgePage() {
                   {/* Address input - only show when advanced bridge is NOT checked */}
                   {!showCustomToField && (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs text-gray-400 font-medium">
-                          One-Step Route to HyperCore Account
-                        </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={useCurrentWallet && address ? address : hyperliquidAddress}
+                          onChange={(e) => {
+                            if (!useCurrentWallet) {
+                              const inputValue = e.target.value.trim()
+                              setHyperliquidAddress(inputValue)
+                              // Clear quote when address changes
+                              if (inputValue !== hyperliquidAddress) {
+                                setQuote(null)
+                                setQuoteError(null)
+                              }
+                            }
+                          }}
+                          disabled={useCurrentWallet}
+                          placeholder="Enter Hyperliquid core account address (0x...)"
+                          className="bridge-input w-full px-4 py-3 pr-12 rounded-xl text-sm placeholder-gray-600 focus:border-mint/40 disabled:opacity-60 disabled:cursor-not-allowed"
+                        />
+                        {isConnected && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newUseCurrentWallet = !useCurrentWallet
+                              setUseCurrentWallet(newUseCurrentWallet)
+                              if (newUseCurrentWallet && address) {
+                                setHyperliquidAddress(address)
+                                setQuote(null)
+                                setQuoteError(null)
+                              }
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs text-mint hover:text-mint/80 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={useCurrentWallet}
+                              onChange={() => {}}
+                              className="w-3.5 h-3.5 rounded border border-mint/40 bg-transparent text-mint focus:ring-mint/30 focus:ring-1 checked:bg-mint/10 checked:border-mint/60 appearance-none cursor-pointer transition-colors"
+                              style={{
+                                backgroundImage: useCurrentWallet ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23a8f5d0' d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z'/%3E%3C/svg%3E")` : 'none',
+                                backgroundSize: 'contain',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'center',
+                              }}
+                            />
+                            <span>Use connected wallet</span>
+                          </button>
+                        )}
                       </div>
-                      <input
-                        type="text"
-                        value={hyperliquidAddress}
-                        onChange={(e) => {
-                          const inputValue = e.target.value.trim()
-                          setHyperliquidAddress(inputValue)
-                          // Clear quote when address changes
-                          if (inputValue !== hyperliquidAddress) {
-                            setQuote(null)
-                            setQuoteError(null)
-                          }
-                        }}
-                        placeholder="Enter Hyperliquid core account address (0x...)"
-                        className="bridge-input w-full px-4 py-3 rounded-xl text-sm placeholder-gray-600 focus:border-mint/40"
-                      />
-                      {hyperliquidAddress && (
-                        <div className="text-xs mt-1">
-                          {isAddress(hyperliquidAddress) ? (
-                            <span className="text-mint/80">
-                              ✓ One-step route: Sign once and receive funds on HyperCore
-                            </span>
-                          ) : (
-                            <span className="text-red-400">
-                              ⚠ Invalid address format. Please enter a valid Ethereum address (0x...)
-                            </span>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -1928,14 +2117,18 @@ export default function BridgePage() {
 
               {/* Output Amount */}
               <div className="relative">
-                <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
-                  {loadingQuote ? (
-                    <span className="text-sm">Loading quote...</span>
-                  ) : quoteError ? (
-                    <span className="text-sm text-red-400">{quoteError}</span>
-                  ) : (
-                    getOutputAmount()
-                  )}
+                <div className="bridge-input w-full px-4 py-5 pr-32 rounded-xl text-2xl font-semibold text-gray-400 flex items-center justify-between">
+                  <span>
+                    {loadingQuote ? (
+                      <span className="text-sm">Loading quote...</span>
+                    ) : quoteError ? (
+                      <span className="text-sm text-red-400">{quoteError}</span>
+                    ) : (
+                      <>
+                        {getOutputAmount()} {toToken.symbol.replace(' (perps)', '')}
+                      </>
+                    )}
+                  </span>
                 </div>
                 {/* Advanced Bridge Checkbox - Only show for Hyperliquid */}
                 {((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && (
@@ -1992,20 +2185,23 @@ export default function BridgePage() {
               )}
             </div>
 
-            {/* Approval Button (if needed) - only show when actionable */}
+            {/* Approval Button (if needed) - show until approval is confirmed */}
             {needsApproval &&
               quote?.estimate.approvalAddress &&
               !isApprovalConfirmed &&
               isConnected &&
               quote &&
-              !isApproving &&
-              !isApprovalConfirming &&
               !loadingQuote && (
                 <button
                   onClick={handleApproval}
-                  className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
+                  disabled={isApproving || isApprovalConfirming}
+                  className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {`Approve ${fromToken.symbol}`}
+                  {isApproving
+                    ? 'Approving...'
+                    : isApprovalConfirming
+                    ? 'Confirming Approval...'
+                    : `Approve ${fromToken.symbol}`}
                 </button>
               )}
 
@@ -2046,14 +2242,13 @@ export default function BridgePage() {
             )}
 
 
-            {/* Bridge Button */}
-            {(() => {
+            {/* Bridge Button - Only show when approval is not needed or has been confirmed */}
+            {(!needsApproval || isApprovalConfirmed) && (() => {
               const buttonDisabled = !isConnected ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
                 loadingQuote ||
                 !quote ||
-                (needsApproval && !isApprovalConfirmed) ||
                 chainMismatch ||
                 isPendingTx ||
                 isConfirming ||
@@ -2073,17 +2268,15 @@ export default function BridgePage() {
                       : 'Enter Amount'
                     : chainMismatch
                       ? 'Switch Chain First'
-                      : needsApproval && !isApprovalConfirmed
-                        ? 'Approve Token First'
-                        : isSwitchingChain
-                          ? 'Switching Chain...'
-                          : isSigningMessage
-                            ? 'Signing Message...'
-                            : isPendingTx || isConfirming
-                              ? isConfirming ? 'Confirming...' : 'Processing...'
-                              : isConfirmed
-                                ? 'Bridge Complete!'
-                                : 'Bridge'
+                      : isSwitchingChain
+                        ? 'Switching Chain...'
+                        : isSigningMessage
+                          ? 'Signing Message...'
+                          : isPendingTx || isConfirming
+                            ? isConfirming ? 'Confirming...' : 'Processing...'
+                            : isConfirmed
+                              ? 'Bridge Complete!'
+                              : 'Bridge'
 
               console.log('[Button State]', {
                 buttonText,
@@ -2118,8 +2311,8 @@ export default function BridgePage() {
               )
             })()}
 
-            {/* Approval Transaction Status */}
-            {approvalHash && (
+            {/* Approval Transaction Status - Hide when success popup is showing */}
+            {approvalHash && !successDetails && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <div className="text-sm text-yellow-400 mb-2">
                   {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
@@ -2135,8 +2328,8 @@ export default function BridgePage() {
               </div>
             )}
 
-            {/* Transaction Status */}
-            {txHash && (
+            {/* Transaction Status - Hide when success popup is showing */}
+            {txHash && !successDetails && (
               <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
                 <div className="text-sm text-mint mb-2">Transaction Submitted</div>
                 <a
@@ -2150,7 +2343,8 @@ export default function BridgePage() {
               </div>
             )}
 
-            {txError && (
+            {/* Transaction Error - Hide when success popup is showing */}
+            {txError && !successDetails && (
               <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
                 <div className="text-sm text-red-400">Transaction Error</div>
                 <div className="text-xs text-red-300 mt-1">
@@ -2163,7 +2357,25 @@ export default function BridgePage() {
           {/* Success Popup */}
           {isConfirmed && txHash && successDetails && txHash === successTxHash && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <div className="bridge-card rounded-3xl p-8 max-w-md w-full text-center space-y-4">
+              <div className="bridge-card rounded-3xl p-8 max-w-md w-full text-center space-y-4 relative">
+                {/* Close button */}
+                <button
+                  onClick={() => {
+                    // Mark this txHash as dismissed immediately to prevent popup from reappearing
+                    if (txHash) {
+                      setDismissedTxHashes(prev => new Set(prev).add(txHash))
+                    }
+                    setSuccessDetails(null)
+                    setSuccessTxHash(null)
+                    // Ensure form is reset when closing popup
+                    resetForm()
+                  }}
+                  className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
                 <div className="flex justify-center">
                   <div className="w-16 h-16 rounded-full bg-mint/20 flex items-center justify-center">
                     <svg className="w-10 h-10 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2184,24 +2396,14 @@ export default function BridgePage() {
                   >
                     View on Explorer
                   </a>
-                  <button
-                    onClick={() => {
-                      // Mark this txHash as dismissed immediately to prevent popup from reappearing
-                      if (txHash) {
-                        setDismissedTxHashes(prev => new Set(prev).add(txHash))
-                      }
-                      setAmount('')
-                      setQuote(null)
-                      setQuoteError(null)
-                      setNeedsApproval(false)
-                      setChainMismatch(false)
-                      setSuccessDetails(null)
-                      setSuccessTxHash(null)
-                    }}
-                    className="pill-button w-full mt-4"
+                  <a
+                    href="https://app.hyperliquid.xyz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pill-button w-full mt-4 block text-center"
                   >
-                    Bridge Again
-                  </button>
+                    Go to Hyperliquid
+                  </a>
                 </div>
               </div>
             </div>

@@ -153,3 +153,107 @@ export function normalizeHyperliquidAddress(address: string): string {
   // This might require calling Hyperliquid API or using their SDK
   return address
 }
+
+/**
+ * Hyperliquid account balance information
+ */
+export interface HyperliquidBalance {
+  spotUSDC: string // USDC balance on spot (formatted)
+  perpsUSDC: string // USDC balance on perps (formatted)
+}
+
+/**
+ * Query Hyperliquid account balances for USDC spot and perps
+ * @param address - Hyperliquid core account address (0x...)
+ * @returns Balance information or null if error
+ */
+export async function getHyperliquidBalance(address: string): Promise<HyperliquidBalance | null> {
+  try {
+    let spotUSDC = '0.00'
+    let perpsUSDC = '0.00'
+
+    // Query perps balance (clearinghouse state)
+    try {
+      const perpsResponse = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'clearinghouseState',
+          user: address,
+        }),
+      })
+
+      if (perpsResponse.ok) {
+        const perpsData = await perpsResponse.json()
+        
+        // Extract perps balance from margin summary
+        if (perpsData && perpsData.marginSummary) {
+          const margin = perpsData.marginSummary
+          
+          // Account value represents total collateral in perps
+          if (margin.accountValue) {
+            const accountValue = parseFloat(margin.accountValue)
+            if (!isNaN(accountValue)) {
+              perpsUSDC = accountValue.toFixed(2)
+            }
+          } else if (margin.totalCollateral) {
+            const totalCollateral = parseFloat(margin.totalCollateral)
+            if (!isNaN(totalCollateral)) {
+              perpsUSDC = totalCollateral.toFixed(2)
+            }
+          }
+        }
+      }
+    } catch (perpsError) {
+      console.error('Error querying perps balance:', perpsError)
+    }
+
+    // Query spot balance separately
+    try {
+      const spotResponse = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'spotClearinghouseState',
+          user: address,
+        }),
+      })
+
+      if (spotResponse.ok) {
+        const spotData = await spotResponse.json()
+        
+        // Look for USDC balance in spot holdings
+        if (spotData && spotData.balances) {
+          const usdcBalance = spotData.balances.find((b: any) => 
+            b.coin === 'USDC' || b.coin === 'USDC.e' || b.coin?.toUpperCase() === 'USDC'
+          )
+          
+          if (usdcBalance) {
+            // Try different possible fields for balance
+            const balanceValue = usdcBalance.total || usdcBalance.hold || usdcBalance.available || usdcBalance.balance
+            if (balanceValue) {
+              const total = parseFloat(balanceValue)
+              if (!isNaN(total)) {
+                spotUSDC = total.toFixed(2)
+              }
+            }
+          }
+        }
+      }
+    } catch (spotError) {
+      console.error('Error querying spot balance:', spotError)
+    }
+
+    return {
+      spotUSDC,
+      perpsUSDC,
+    }
+  } catch (error) {
+    console.error('Error querying Hyperliquid balance:', error)
+    return null
+  }
+}
