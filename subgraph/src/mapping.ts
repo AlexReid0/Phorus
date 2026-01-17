@@ -1,4 +1,4 @@
-import { BigInt, Bytes, crypto, ByteArray } from "@graphprotocol/graph-ts"
+import { BigInt, Bytes, crypto, ByteArray, log } from "@graphprotocol/graph-ts"
 import { LiFiTransferStarted } from "../generated/LiFiDiamond/LiFiDiamond"
 import { User, UserActivity } from "../generated/schema"
 
@@ -8,18 +8,46 @@ const INTEGRATOR_ID = "phorus-2"
 const INTEGRATOR_ID_HASH = crypto.keccak256(ByteArray.fromUTF8(INTEGRATOR_ID))
 
 export function handleLiFiTransferStarted(event: LiFiTransferStarted): void {
-    // Event signature: LiFiTransferStarted(indexed bytes32 bridgeTransactionId, indexed string bridge, indexed string integrator, address referrer, address from, address to, uint256 fromAmount, uint256 toAmount)
+    // 1. Debug Logging
+    const bridgeData = event.params.bridgeData
+    log.info("Checking event - Tx: {} - Integrator: {}", [
+        event.transaction.hash.toHexString(),
+        bridgeData.integrator
+    ])
 
-    // 1. Filter by Integrator ID
-    if (event.params.integrator != INTEGRATOR_ID_HASH) {
+    // 2. Filter by Integrator ID
+    if (bridgeData.integrator != INTEGRATOR_ID) {
+        log.info("Skipping event - Integrator mismatch. Expected: {}, Found: {}", [INTEGRATOR_ID, bridgeData.integrator])
         return
     }
 
-    const userAddress = event.params.from.toHexString()
+    // 3. Filter by Asset (USDC Only for now)
+    const USDC_ADDRESSES: string[] = [
+        "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Mainnet
+        "0xaf88d065e77c8cc2239327c5edb3a432268e5831", // Arbitrum Native
+        "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8", // Arbitrum Bridged
+        "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", // Base
+    ]
+
+    const sendingAsset = bridgeData.sendingAssetId.toHexString().toLowerCase()
+    let isUsdc = false
+    for (let i = 0; i < USDC_ADDRESSES.length; i++) {
+        if (sendingAsset == USDC_ADDRESSES[i]) {
+            isUsdc = true
+            break
+        }
+    }
+
+    if (!isUsdc) {
+        log.info("Skipping event - Non-USDC asset: {}", [sendingAsset])
+        return
+    }
+
+    const userAddress = event.transaction.from.toHexString()
     const txHash = event.transaction.hash.toHexString()
     const timestamp = event.block.timestamp
 
-    // 2. Load or Create User
+    // 3. Load or Create User
     let user = User.load(userAddress)
     if (!user) {
         user = new User(userAddress)
@@ -28,12 +56,12 @@ export function handleLiFiTransferStarted(event: LiFiTransferStarted): void {
         user.bridgeCount = BigInt.fromI32(0)
     }
 
-    // 3. Update User Stats
-    user.depositVolume = user.depositVolume.plus(event.params.fromAmount)
+    // 4. Update User Stats
+    user.depositVolume = user.depositVolume.plus(bridgeData.minAmount)
 
-    // Estimate fees as 0.03% (3 basis points) of volume for leaderboard purposes
-    // Logic: fees = amount * 3 / 10000
-    let estimatedFee = event.params.fromAmount.times(BigInt.fromI32(3)).div(BigInt.fromI32(10000))
+    // Estimate fees as 0.1% (10 basis points) of volume
+    // Logic: fees = amount * 10 / 10000
+    let estimatedFee = bridgeData.minAmount.times(BigInt.fromI32(10)).div(BigInt.fromI32(10000))
     user.totalFeesPaid = user.totalFeesPaid.plus(estimatedFee)
 
     user.bridgeCount = user.bridgeCount.plus(BigInt.fromI32(1))
@@ -45,7 +73,7 @@ export function handleLiFiTransferStarted(event: LiFiTransferStarted): void {
     let activity = new UserActivity(activityId)
     activity.user = user.id
     activity.type = "BRIDGE"
-    activity.amount = event.params.fromAmount
+    activity.amount = bridgeData.minAmount
     activity.txHash = event.transaction.hash
     activity.blockNumber = event.block.number
     activity.timestamp = timestamp

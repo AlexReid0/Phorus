@@ -23,36 +23,52 @@ export class LiFiTransferStarted__Params {
     this._event = event;
   }
 
-  get bridgeTransactionId(): Bytes {
-    return this._event.parameters[0].value.toBytes();
+  get bridgeData(): LiFiTransferStartedBridgeDataStruct {
+    return changetype<LiFiTransferStartedBridgeDataStruct>(
+      this._event.parameters[0].value.toTuple()
+    );
+  }
+}
+
+export class LiFiTransferStartedBridgeDataStruct extends ethereum.Tuple {
+  get transactionId(): Bytes {
+    return this[0].toBytes();
   }
 
-  get bridge(): Bytes {
-    return this._event.parameters[1].value.toBytes();
+  get bridge(): string {
+    return this[1].toString();
   }
 
-  get integrator(): Bytes {
-    return this._event.parameters[2].value.toBytes();
+  get integrator(): string {
+    return this[2].toString();
   }
 
   get referrer(): Address {
-    return this._event.parameters[3].value.toAddress();
+    return this[3].toAddress();
   }
 
-  get from(): Address {
-    return this._event.parameters[4].value.toAddress();
+  get sendingAssetId(): Address {
+    return this[4].toAddress();
   }
 
-  get to(): Address {
-    return this._event.parameters[5].value.toAddress();
+  get receiver(): Address {
+    return this[5].toAddress();
   }
 
-  get fromAmount(): BigInt {
-    return this._event.parameters[6].value.toBigInt();
+  get minAmount(): BigInt {
+    return this[6].toBigInt();
   }
 
-  get toAmount(): BigInt {
-    return this._event.parameters[7].value.toBigInt();
+  get destinationChainId(): BigInt {
+    return this[7].toBigInt();
+  }
+
+  get hasSourceSwaps(): boolean {
+    return this[8].toBoolean();
+  }
+
+  get hasDestinationCall(): boolean {
+    return this[9].toBoolean();
   }
 }
 
