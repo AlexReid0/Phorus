@@ -1,4 +1,9 @@
 // Tokens available per chain (fetched from LiFi API)
+interface Token {
+  symbol: string
+  name: string
+}
+
 const getTokensForChain = (chainId: string): Token[] => {
   const chainTokens: Record<string, Token[]> = {
     ethereum: [

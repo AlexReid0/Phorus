@@ -6,6 +6,10 @@ const tokensData = JSON.parse(fs.readFileSync(path.join(__dirname, 'lifi-tokens.
 
 // Generate getTokensForChain function
 let tokensCode = '// Tokens available per chain (fetched from LiFi API)\n'
+tokensCode += 'interface Token {\n'
+tokensCode += '  symbol: string\n'
+tokensCode += '  name: string\n'
+tokensCode += '}\n\n'
 tokensCode += 'const getTokensForChain = (chainId: string): Token[] => {\n'
 tokensCode += '  const chainTokens: Record<string, Token[]> = {\n'
 
