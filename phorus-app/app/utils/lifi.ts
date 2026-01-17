@@ -5643,6 +5643,49 @@ export interface RouteResponse {
 }
 
 /**
+ * Helper function to find token address with fallbacks
+ */
+function findTokenAddress(symbol: string, chainId: string): string | null {
+  // For native tokens (ETH), use the zero address
+  if (symbol === 'ETH' || symbol === 'WETH') {
+    return '0x0000000000000000000000000000000000000000'
+  }
+  
+  // Try exact match on the chain
+  const chainTokens = TOKEN_ADDRESSES[chainId]
+  if (chainTokens?.[symbol]) {
+    return chainTokens[symbol]
+  }
+  
+  // Try ethereum as fallback
+  if (TOKEN_ADDRESSES['ethereum']?.[symbol]) {
+    return TOKEN_ADDRESSES['ethereum'][symbol]
+  }
+  
+  // Try case-insensitive match
+  const symbolUpper = symbol.toUpperCase()
+  if (chainTokens) {
+    for (const [key, address] of Object.entries(chainTokens)) {
+      if (key.toUpperCase() === symbolUpper) {
+        return address
+      }
+    }
+  }
+  
+  // Try ethereum with case-insensitive
+  const ethTokens = TOKEN_ADDRESSES['ethereum']
+  if (ethTokens) {
+    for (const [key, address] of Object.entries(ethTokens)) {
+      if (key.toUpperCase() === symbolUpper) {
+        return address
+      }
+    }
+  }
+  
+  return null
+}
+
+/**
  * Get a quote for a bridge transaction
  */
 export async function getQuote(params: {
@@ -5664,14 +5707,27 @@ export async function getQuote(params: {
       return null
     }
 
-    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] || 
-      TOKEN_ADDRESSES['ethereum']?.[params.fromToken]
-    const toTokenAddress = TOKEN_ADDRESSES[params.toChain]?.[params.toToken] ||
-      TOKEN_ADDRESSES['ethereum']?.[params.toToken]
+    // Look up token addresses using helper function
+    const fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
+    const toTokenAddress = findTokenAddress(params.toToken, params.toChain)
 
     if (!fromTokenAddress || !toTokenAddress) {
-      console.error('Token not found:', params.fromToken, params.toToken)
-      return null
+      const missingTokens = []
+      if (!fromTokenAddress) missingTokens.push(`${params.fromToken} on ${params.fromChain}`)
+      if (!toTokenAddress) missingTokens.push(`${params.toToken} on ${params.toChain}`)
+      
+      console.error('Token not found:', {
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        fromChain: params.fromChain,
+        toChain: params.toChain,
+        fromTokenAddress,
+        toTokenAddress,
+        missingTokens
+      })
+      
+      // Throw error with helpful message
+      throw new Error(`Token${missingTokens.length > 1 ? 's' : ''} not found: ${missingTokens.join(', ')}. Please select a different token.`)
     }
 
     // Convert amount to wei (assuming 18 decimals for simplicity, will adjust per token)
@@ -5687,14 +5743,30 @@ export async function getQuote(params: {
     url.searchParams.set('toToken', toTokenAddress)
     url.searchParams.set('fromAmount', fromAmountWei)
     url.searchParams.set('fromAddress', params.fromAddress)
+    if (params.toAddress) {
+      url.searchParams.set('toAddress', params.toAddress)
+    }
     url.searchParams.set('slippage', slippage.toString())
 
     const response = await fetch(url.toString())
     
     if (!response.ok) {
-      const error = await response.text()
-      console.error('LiFi API error:', error)
-      return null
+      const errorText = await response.text()
+      let errorMessage = 'Unknown error'
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.message || errorJson.error || errorText
+      } catch {
+        errorMessage = errorText
+      }
+      console.error('LiFi API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorMessage,
+        url: url.toString()
+      })
+      // Throw error with message so it can be caught and displayed
+      throw new Error(errorMessage || `LiFi API error: ${response.status} ${response.statusText}`)
     }
 
     const data = await response.json()
@@ -5727,14 +5799,27 @@ export async function getRoutes(params: {
       return null
     }
 
-    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] || 
-      TOKEN_ADDRESSES['ethereum']?.[params.fromToken]
-    const toTokenAddress = TOKEN_ADDRESSES[params.toChain]?.[params.toToken] ||
-      TOKEN_ADDRESSES['ethereum']?.[params.toToken]
+    // Look up token addresses using helper function
+    const fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
+    const toTokenAddress = findTokenAddress(params.toToken, params.toChain)
 
     if (!fromTokenAddress || !toTokenAddress) {
-      console.error('Token not found:', params.fromToken, params.toToken)
-      return null
+      const missingTokens = []
+      if (!fromTokenAddress) missingTokens.push(`${params.fromToken} on ${params.fromChain}`)
+      if (!toTokenAddress) missingTokens.push(`${params.toToken} on ${params.toChain}`)
+      
+      console.error('Token not found:', {
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        fromChain: params.fromChain,
+        toChain: params.toChain,
+        fromTokenAddress,
+        toTokenAddress,
+        missingTokens
+      })
+      
+      // Throw error with helpful message
+      throw new Error(`Token${missingTokens.length > 1 ? 's' : ''} not found: ${missingTokens.join(', ')}. Please select a different token.`)
     }
 
     const decimals = params.fromToken === 'ETH' ? 18 : 6
@@ -5762,9 +5847,21 @@ export async function getRoutes(params: {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      console.error('LiFi routes API error:', error)
-      return null
+      const errorText = await response.text()
+      let errorMessage = 'Unknown error'
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.message || errorJson.error || errorText
+      } catch {
+        errorMessage = errorText
+      }
+      console.error('LiFi routes API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorMessage
+      })
+      // Throw error with message so it can be caught and displayed
+      throw new Error(errorMessage || `LiFi routes API error: ${response.status} ${response.statusText}`)
     }
 
     const data = await response.json()

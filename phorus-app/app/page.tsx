@@ -5788,16 +5788,23 @@ export default function BridgePage() {
 
         // Fall back to simple quote if no direct route found
         if (!quoteData) {
-          quoteData = await getQuote({
-            fromChain: fromChain.id,
-            toChain: toChain.id,
-            fromToken: fromToken.symbol,
-            toToken: toToken.symbol,
-            fromAmount: amount,
-            fromAddress: address,
-            toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
-            slippage: 0.03, // 3% slippage
-          })
+          try {
+            quoteData = await getQuote({
+              fromChain: fromChain.id,
+              toChain: toChain.id,
+              fromToken: fromToken.symbol,
+              toToken: toToken.symbol,
+              fromAmount: amount,
+              fromAddress: address,
+              toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
+              slippage: 0.03, // 3% slippage
+            })
+          } catch (quoteError: any) {
+            console.error('Quote error:', quoteError)
+            setQuoteError(quoteError?.message || 'Unable to fetch quote. Please try again.')
+            setLoadingQuote(false)
+            return
+          }
         }
 
         if (quoteData) {
@@ -5828,12 +5835,15 @@ export default function BridgePage() {
             setNeedsApproval(false)
           }
         } else {
-          setQuoteError('Unable to fetch quote. Please try again.')
+          // More specific error message
+          const errorMsg = quoteError || 'Unable to fetch quote. Please check that both tokens are available on the selected chains.'
+          setQuoteError(errorMsg)
           setNeedsApproval(false)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error fetching quote:', error)
-        setQuoteError('Error fetching quote. Please try again.')
+        const errorMessage = error?.message || error?.toString() || 'Error fetching quote. Please try again.'
+        setQuoteError(errorMessage)
       } finally {
         setLoadingQuote(false)
       }
@@ -6477,16 +6487,20 @@ export default function BridgePage() {
               )}
             </div>
 
-            {/* Approval Button (if needed) */}
-            {needsApproval && quote?.estimate.approvalAddress && !isApprovalConfirmed && (
+            {/* Approval Button (if needed) - only show when actionable */}
+            {needsApproval && 
+             quote?.estimate.approvalAddress && 
+             !isApprovalConfirmed && 
+             isConnected && 
+             quote && 
+             !isApproving && 
+             !isApprovalConfirming && 
+             !loadingQuote && (
               <button
-                disabled={!isConnected || !quote || isApproving || isApprovalConfirming}
                 onClick={handleApproval}
                 className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
               >
-                {isApproving || isApprovalConfirming 
-                  ? isApprovalConfirming ? 'Confirming Approval...' : 'Approving...' 
-                  : `Approve ${fromToken.symbol}`}
+                {`Approve ${fromToken.symbol}`}
               </button>
             )}
 
