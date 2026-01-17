@@ -52,7 +52,7 @@ const chains: Chain[] = chainsArray
     }
 
     // Only a is popular - a comes first
-    if (aPopularIndex !== -1) {
+    if (aPopularIndex !== -1) {``
       return -1
     }
 
@@ -5870,6 +5870,41 @@ export default function BridgePage() {
     }
   }, [toChain.id])
 
+  // Auto-match destination token to source token when destination is Hyperliquid
+  useEffect(() => {
+    const isHyperliquid = (toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid'
+    
+    if (isHyperliquid && fromToken.symbol) {
+      const availableTokens = getTokensForChain(toChain.id)
+      
+      // Try to find the same token symbol on Hyperliquid
+      const matchingToken = availableTokens.find(t => 
+        t.symbol.toUpperCase() === fromToken.symbol.toUpperCase()
+      )
+      
+      if (matchingToken) {
+        // If the same token exists on Hyperliquid, use it
+        setToToken(matchingToken)
+      } else {
+        // If ETH/WETH, default to USDC (Hyperliquid doesn't have ETH)
+        if (fromToken.symbol === 'ETH' || fromToken.symbol === 'WETH') {
+          const usdcToken = availableTokens.find(t => t.symbol === 'USDC')
+          if (usdcToken) {
+            setToToken(usdcToken)
+          }
+        } else {
+          // For other tokens, try to find USDC as fallback
+          const usdcToken = availableTokens.find(t => t.symbol === 'USDC')
+          if (usdcToken) {
+            setToToken(usdcToken)
+          } else if (availableTokens.length > 0) {
+            setToToken(availableTokens[0])
+          }
+        }
+      }
+    }
+  }, [fromToken.symbol, toChain.id])
+
   // Fetch quote when parameters change
   useEffect(() => {
     if (!isConnected || !address || !amount || parseFloat(amount) <= 0) {
@@ -5904,40 +5939,45 @@ export default function BridgePage() {
         const isHyperliquidDirect = (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && normalizedHyperliquidAddress && !showCustomToField
         let gotQuoteFromRoutes = false // Track if we got a quote from routes
 
-        // For Hyperliquid transfers, use LiFi's new one-step routes directly into HyperCore
-        // This uses Relay and Gas.zip for intent-based flow - just sign and receive funds on HyperCore
-        // Only when NOT using advanced bridge mode
+        // For Hyperliquid transfers, route through Arbitrum first, then bridge into HyperCore
+        // Hyperliquid deposits work by: Source Chain → Arbitrum → HyperCore
+        // LiFi will handle the multi-step route automatically
         if (isHyperliquidDirect) {
-          // Route directly to Hyperliquid (hpl) with USDC - LiFi handles the one-step flow
+          // Route to Arbitrum first, then LiFi will bridge to HyperCore
+          // The toAddress should be the Hyperliquid core account address for the final step
           try {
             const routesData = await getRoutes({
               fromChain: fromChain.id,
-              toChain: toChain.id, // Route directly to Hyperliquid, not Arbitrum
+              toChain: 'arb', // Route to Arbitrum first (Hyperliquid deposits go through Arbitrum)
               fromToken: fromToken.symbol,
-              toToken: 'USDC', // Use USDC on Hyperliquid (LiFi's one-step routes support this)
+              toToken: 'USDC', // Use USDC (will be on Arbitrum, then bridged to HyperCore)
               fromAmount: amount,
               fromAddress: address,
-              toAddress: normalizedHyperliquidAddress!, // Pass the Hyperliquid core account address
+              toAddress: normalizedHyperliquidAddress!, // Hyperliquid core account address for final deposit
               slippage: 0.03,
             })
 
             if (routesData && routesData.routes && routesData.routes.length > 0) {
-              console.log('Found one-step routes to HyperCore:', routesData.routes.length, 'routes')
+              console.log('Found routes to Arbitrum (will bridge to HyperCore):', routesData.routes.length, 'routes')
               setRoutes(routesData)
 
-              // Find the best route - prefer one-step routes (single step)
-              // Look for routes with Hyperliquid steps or single-step routes
+              // Find the best route - prefer routes that can bridge to Hyperliquid
+              // Look for routes with Hyperliquid steps or routes that end on Arbitrum (we'll bridge from there)
               let bestRoute = routesData.routes.find((route: any) => {
-                // Prefer single-step routes (one-step into HyperCore)
-                if (route.steps && route.steps.length === 1) {
-                  return true
-                }
-                // Or routes with Hyperliquid steps
-                return route.steps.some((step: any) =>
+                // Prefer routes with Hyperliquid steps (direct bridge to HyperCore)
+                if (route.steps.some((step: any) =>
                   step.tool === 'hyperliquidSA' ||
                   step.toolDetails?.key === 'hyperliquidSA' ||
                   step.action?.toChainId === 1337 // Hyperliquid chain ID
-                )
+                )) {
+                  return true
+                }
+                // Or routes that end on Arbitrum (chain ID 42161)
+                const lastStep = route.steps[route.steps.length - 1]
+                if (lastStep && lastStep.action?.toChainId === 42161) {
+                  return true
+                }
+                return false
               })
 
               // If no specific route, find one that executes on fromChain
@@ -5954,68 +5994,112 @@ export default function BridgePage() {
               }
 
               if (bestRoute && bestRoute.steps && bestRoute.steps.length > 0) {
-                setSelectedRoute(bestRoute)
-                setCurrentStepIndex(0) // Start with first step
-                const firstStep = bestRoute.steps[0]
-                setSelectedStep(firstStep)
-
-                // Get transaction data for the first step
-                try {
-                  const stepWithTx = await getStepTransaction(firstStep)
-
-                  // Check if this is a messaging step (intent-based flow with Relay)
-                  const isMessagingStep = stepWithTx.type === 'message' ||
-                    stepWithTx.tool === 'hyperliquidSA' ||
-                    stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
-                    stepWithTx.message
-
-                  if (isMessagingStep) {
-                    // For messaging steps (intent-based), use the step data directly
-                    setQuote({
-                      ...stepWithTx,
-                      isMessaging: true,
-                      route: bestRoute,
-                      step: firstStep,
-                      stepIndex: 0,
-                      totalSteps: bestRoute.steps.length,
-                    })
-                    gotQuoteFromRoutes = true
-                  } else if (stepWithTx.transactionRequest) {
-                    // For regular transaction steps (one-step bridge), use transactionRequest
-                    setQuote({
-                      ...stepWithTx,
-                      isMessaging: false,
-                      route: bestRoute,
-                      step: firstStep,
-                      stepIndex: 0,
-                      totalSteps: bestRoute.steps.length,
-                    })
-                    gotQuoteFromRoutes = true
-                  } else {
+                  setSelectedRoute(bestRoute)
+                  setCurrentStepIndex(0) // Start with first step
+                  const firstStep = bestRoute.steps[0]
+                  setSelectedStep(firstStep)
+                  
+                  // Check if this route ends on Arbitrum and needs a second step to Hyperliquid
+                  const lastStep = bestRoute.steps[bestRoute.steps.length - 1]
+                  // Check route's final destination chain ID
+                  const routeToChainId = bestRoute.toChainId
+                  const endsOnArbitrum = routeToChainId === 42161 // Arbitrum chain ID
+                  const hasHyperliquidStep = bestRoute.steps.some((step: any) => 
+                    step.action?.toChainId === 1337 || 
+                    step.tool === 'hyperliquidSA' ||
+                    step.toolDetails?.key === 'hyperliquidSA' ||
+                    (step as any).toChainId === 1337
+                  )
+                  
+                  // If route ends on Arbitrum but doesn't have Hyperliquid step, we need to add it
+                  // For now, we'll use the route as-is and let the user complete the deposit manually
+                  // OR LiFi might handle it automatically if we pass the Hyperliquid address
+                  
+                  // Get transaction data for the first step
+                  try {
+                    const stepWithTx = await getStepTransaction(firstStep)
+                    
+                    // Check if this is a messaging step (intent-based flow with Relay)
+                    const isMessagingStep = stepWithTx.type === 'message' || 
+                                           stepWithTx.tool === 'hyperliquidSA' ||
+                                           stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
+                                           stepWithTx.message
+                    
+                    if (isMessagingStep) {
+                      // For messaging steps (intent-based), use the step data directly
+                      setQuote({
+                        ...stepWithTx,
+                        isMessaging: true,
+                        route: bestRoute,
+                        step: firstStep,
+                        stepIndex: 0,
+                        totalSteps: bestRoute.steps.length,
+                        needsHyperliquidDeposit: endsOnArbitrum && !hasHyperliquidStep,
+                      })
+                      gotQuoteFromRoutes = true
+                    } else if (stepWithTx.transactionRequest) {
+                      // For regular transaction steps (one-step bridge), use transactionRequest
+                      setQuote({
+                        ...stepWithTx,
+                        isMessaging: false,
+                        route: bestRoute,
+                        step: firstStep,
+                        stepIndex: 0,
+                        totalSteps: bestRoute.steps.length,
+                        needsHyperliquidDeposit: endsOnArbitrum && !hasHyperliquidStep,
+                      })
+                      gotQuoteFromRoutes = true
+                    } else {
+                      // Fallback to simple quote
+                      throw new Error('No transaction data in step')
+                    }
+                  } catch (stepError: any) {
+                    console.error('Error getting step transaction:', stepError)
                     // Fallback to simple quote
-                    throw new Error('No transaction data in step')
+                    throw stepError
                   }
-                } catch (stepError: any) {
-                  console.error('Error getting step transaction:', stepError)
-                  // Fallback to simple quote
-                  throw stepError
+                } else {
+                  throw new Error('No valid route found')
                 }
               } else {
-                throw new Error('No valid route found')
+                // No routes available
+                console.log('No routes available in response:', routesData)
+                
+                // Check if there's information about why routes are unavailable
+                const unavailableRoutes = (routesData as any)?.unavailableRoutes
+                if (unavailableRoutes) {
+                  console.log('Unavailable routes info:', unavailableRoutes)
+                }
+                
+                // For Hyperliquid, don't fall back to simple quote API (it doesn't support Hyperliquid)
+                if (isHyperliquidDirect) {
+                  const errorMsg = unavailableRoutes 
+                    ? `No routes available: ${JSON.stringify(unavailableRoutes)}`
+                    : 'No routes available for this transfer. The selected token pair may not be supported for Hyperliquid transfers. Please try a different token or check if the route is available.'
+                  setQuoteError(errorMsg)
+                  setLoadingQuote(false)
+                  return
+                }
+                
+                console.log('Falling back to simple quote API')
               }
-            } else {
-              // No routes available - fall through to try simple quote API
-              console.log('No routes available in response:', routesData)
-              console.log('Falling back to simple quote API')
+            } catch (routesError: any) {
+              console.error('Routes error for Hyperliquid one-step transfer:', routesError)
+              
+              // For Hyperliquid, don't fall back to simple quote API (it doesn't support Hyperliquid)
+              if (isHyperliquidDirect) {
+                const errorMsg = routesError?.message || 'Unable to find routes for Hyperliquid transfer. Please try a different token pair or check if the route is supported.'
+                setQuoteError(errorMsg)
+                setLoadingQuote(false)
+                return
+              }
+              
+              // If routes API fails, try falling back to simple quote API (only for non-Hyperliquid)
+              console.log('Routes API failed, falling back to simple quote API')
+              gotQuoteFromRoutes = false
             }
-          } catch (routesError: any) {
-            console.error('Routes error for Hyperliquid one-step transfer:', routesError)
-            // If routes API fails, try falling back to simple quote API
-            console.log('Routes API failed, falling back to simple quote API')
-            gotQuoteFromRoutes = false
           }
-        }
-
+        
         // Fall back to simple quote if routes didn't work or not using Hyperliquid direct
         // For Hyperliquid, require address to be entered (don't default to current wallet)
         // UNLESS using advanced bridge mode (showCustomToField)
@@ -6027,7 +6111,14 @@ export default function BridgePage() {
             setLoadingQuote(false)
             return
           }
-
+          
+          // Don't try simple quote API for Hyperliquid - it doesn't support it
+          if (isHyperliquidSelected) {
+            setQuoteError('No routes available for Hyperliquid transfer. Please try using the advanced routes API or select a different destination chain.')
+            setLoadingQuote(false)
+            return
+          }
+          
           try {
             const quoteData = await getQuote({
               fromChain: fromChain.id,
