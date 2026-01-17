@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain } from 'wagmi'
-import { formatUnits, parseUnits, erc20Abi } from 'viem'
+import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain, useSignTypedData } from 'wagmi'
+import { formatUnits, parseUnits, erc20Abi, isAddress, getAddress } from 'viem'
 import ConnectWallet from './components/ConnectWallet'
 import ChainIcon from './components/ChainIcon'
 import TokenIcon from './components/TokenIcon'
-import { getQuote, getRoutes, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
+import { getQuote, getRoutes, getStepTransaction, relayMessage, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
 
 interface Chain {
   id: string
@@ -5699,11 +5699,17 @@ export default function BridgePage() {
   const [quote, setQuote] = useState<any>(null)
   const [loadingQuote, setLoadingQuote] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [routes, setRoutes] = useState<any>(null) // Store routes for messaging flow
+  const [selectedRoute, setSelectedRoute] = useState<any>(null) // Selected route
+  const [selectedStep, setSelectedStep] = useState<any>(null) // Selected step from route
+  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0) // Track which step we're on
+  const [executingSteps, setExecutingSteps] = useState<boolean>(false) // Track if we're executing multi-step route
   
   // Transaction state
   const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
   const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
   const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const { signTypedDataAsync, isPending: isSigningMessage } = useSignTypedData()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   })
@@ -5741,9 +5747,71 @@ export default function BridgePage() {
   // Track if user manually dismissed the popup
   const [dismissedTxHashes, setDismissedTxHashes] = useState<Set<string>>(new Set())
 
+  // Handle multi-step execution: after bridge transaction is confirmed, proceed to messaging step
+  useEffect(() => {
+    if (isConfirmed && txHash && selectedRoute && executingSteps && currentStepIndex < selectedRoute.steps.length - 1) {
+      // Bridge transaction confirmed, now proceed to next step (messaging)
+      const nextStepIndex = currentStepIndex + 1
+      const nextStep = selectedRoute.steps[nextStepIndex]
+      
+      if (nextStep) {
+        // Get transaction data for the next step
+        getStepTransaction(nextStep).then((stepWithTx) => {
+          const isMessagingStep = stepWithTx.type === 'message' || 
+                                 stepWithTx.tool === 'hyperliquidSA' ||
+                                 stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
+                                 stepWithTx.message
+          
+          if (isMessagingStep && stepWithTx.message) {
+            // Execute messaging step
+            setCurrentStepIndex(nextStepIndex)
+            setSelectedStep(nextStep)
+            
+            // Sign and relay the message
+            signTypedDataAsync({
+              domain: stepWithTx.message.domain,
+              types: stepWithTx.message.types,
+              primaryType: stepWithTx.message.primaryType,
+              message: stepWithTx.message.message,
+            }).then((signature) => {
+              return relayMessage(nextStep, signature)
+            }).then((relayResult) => {
+              console.log('Messaging step completed:', relayResult)
+              // All steps completed
+              setExecutingSteps(false)
+              setCurrentStepIndex(0)
+              
+              // Show success
+              setSuccessDetails({
+                fromToken: fromToken.symbol,
+                toChain: toChain.name,
+              })
+              setSuccessTxHash(txHash) // Use the bridge txHash for tracking
+            }).catch((error) => {
+              console.error('Error executing messaging step:', error)
+              setQuoteError(error?.message || 'Failed to execute messaging step')
+              setExecutingSteps(false)
+              setCurrentStepIndex(0)
+            })
+          } else {
+            // Not a messaging step, might be another transaction
+            console.warn('Next step is not a messaging step:', stepWithTx)
+            setExecutingSteps(false)
+            setCurrentStepIndex(0)
+          }
+        }).catch((error) => {
+          console.error('Error getting next step transaction:', error)
+          setQuoteError(error?.message || 'Failed to get next step')
+          setExecutingSteps(false)
+          setCurrentStepIndex(0)
+        })
+      }
+    }
+  }, [isConfirmed, txHash, selectedRoute, executingSteps, currentStepIndex, signTypedDataAsync, fromToken.symbol, toChain.name])
+
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
-    if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash)) {
+    if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash) && !executingSteps) {
       // Store details before resetting
       setSuccessDetails({
         fromToken: fromToken.symbol,
@@ -5760,13 +5828,15 @@ export default function BridgePage() {
         setChainMismatch(false)
         setSuccessDetails(null)
         setSuccessTxHash(null)
+        setCurrentStepIndex(0)
+        setExecutingSteps(false)
         // Mark this txHash as dismissed so it won't show again
         setDismissedTxHashes(prev => new Set(prev).add(txHash))
       }, 5000) // Show popup for 5 seconds
       
       return () => clearTimeout(timer)
     }
-  }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes])
+  }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes, executingSteps])
 
   // Clear success state when starting a new transaction (form parameters change)
   useEffect(() => {
@@ -5809,91 +5879,212 @@ export default function BridgePage() {
     const fetchQuote = async () => {
       setLoadingQuote(true)
       setQuoteError(null)
+      setRoutes(null)
+      setSelectedRoute(null)
+      setSelectedStep(null)
       
       try {
-        // Try to get advanced routes first to find direct routes
-        const routesData = await getRoutes({
-          fromChain: fromChain.id,
-          toChain: toChain.id,
-          fromToken: fromToken.symbol,
-          toToken: toToken.symbol,
-          fromAmount: amount,
-          fromAddress: address,
-          toAddress: (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && hyperliquidAddress ? hyperliquidAddress : address,
-          slippage: 0.03,
-        })
-
-        let quoteData = null
-
-        // If we have routes, try to find one that executes on the fromChain
-        if (routesData && routesData.routes && routesData.routes.length > 0) {
-          // Find a route where the first step executes on fromChain
-          const directRoute = routesData.routes.find((route: any) => {
-            const firstStep = route.steps[0]
-            return firstStep && firstStep.action.fromChainId === CHAIN_IDS[fromChain.id]
-          })
-
-          if (directRoute && directRoute.steps && directRoute.steps.length > 0) {
-            // Use the first step as our quote
-            const firstStep = directRoute.steps[0]
-            // We'll need to get the transaction for this step
-            // For now, fall back to simple quote
+        // Validate and normalize the Hyperliquid address if provided
+        let normalizedHyperliquidAddress: string | null = null
+        if (hyperliquidAddress && hyperliquidAddress.trim()) {
+          const trimmedAddress = hyperliquidAddress.trim()
+          if (isAddress(trimmedAddress)) {
+            // Normalize to checksummed address
+            normalizedHyperliquidAddress = getAddress(trimmedAddress)
+          } else {
+            // Invalid address format - don't proceed with quote
+            setQuoteError('Invalid Hyperliquid address format. Please enter a valid Ethereum address (0x...).')
+            setLoadingQuote(false)
+            return
           }
         }
-
-        // Fall back to simple quote if no direct route found
-        if (!quoteData) {
+        
+        // Only use Hyperliquid direct flow when NOT using advanced bridge (showCustomToField)
+        const isHyperliquidDirect = (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && normalizedHyperliquidAddress && !showCustomToField
+        let gotQuoteFromRoutes = false // Track if we got a quote from routes
+        
+        // For Hyperliquid transfers, use LiFi's new one-step routes directly into HyperCore
+        // This uses Relay and Gas.zip for intent-based flow - just sign and receive funds on HyperCore
+        // Only when NOT using advanced bridge mode
+        if (isHyperliquidDirect) {
+          // Route directly to Hyperliquid (hpl) with USDC - LiFi handles the one-step flow
           try {
-            quoteData = await getQuote({
+            const routesData = await getRoutes({
+              fromChain: fromChain.id,
+              toChain: toChain.id, // Route directly to Hyperliquid, not Arbitrum
+              fromToken: fromToken.symbol,
+              toToken: 'USDC', // Use USDC on Hyperliquid (LiFi's one-step routes support this)
+              fromAmount: amount,
+              fromAddress: address,
+              toAddress: normalizedHyperliquidAddress!, // Pass the Hyperliquid core account address
+              slippage: 0.03,
+            })
+            
+            if (routesData && routesData.routes && routesData.routes.length > 0) {
+              console.log('Found one-step routes to HyperCore:', routesData.routes.length, 'routes')
+              setRoutes(routesData)
+              
+              // Find the best route - prefer one-step routes (single step)
+              // Look for routes with Hyperliquid steps or single-step routes
+              let bestRoute = routesData.routes.find((route: any) => {
+                // Prefer single-step routes (one-step into HyperCore)
+                if (route.steps && route.steps.length === 1) {
+                  return true
+                }
+                // Or routes with Hyperliquid steps
+                return route.steps.some((step: any) => 
+                  step.tool === 'hyperliquidSA' ||
+                  step.toolDetails?.key === 'hyperliquidSA' ||
+                  step.action?.toChainId === 1337 // Hyperliquid chain ID
+                )
+              })
+              
+              // If no specific route, find one that executes on fromChain
+              if (!bestRoute) {
+                bestRoute = routesData.routes.find((route: any) => {
+                  const firstStep = route.steps[0]
+                  return firstStep && firstStep.action.fromChainId === CHAIN_IDS[fromChain.id]
+                })
+              }
+              
+              // Fallback to first route
+              if (!bestRoute) {
+                bestRoute = routesData.routes[0]
+              }
+
+              if (bestRoute && bestRoute.steps && bestRoute.steps.length > 0) {
+                  setSelectedRoute(bestRoute)
+                  setCurrentStepIndex(0) // Start with first step
+                  const firstStep = bestRoute.steps[0]
+                  setSelectedStep(firstStep)
+                  
+                  // Get transaction data for the first step
+                  try {
+                    const stepWithTx = await getStepTransaction(firstStep)
+                    
+                    // Check if this is a messaging step (intent-based flow with Relay)
+                    const isMessagingStep = stepWithTx.type === 'message' || 
+                                           stepWithTx.tool === 'hyperliquidSA' ||
+                                           stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
+                                           stepWithTx.message
+                    
+                    if (isMessagingStep) {
+                      // For messaging steps (intent-based), use the step data directly
+                      setQuote({
+                        ...stepWithTx,
+                        isMessaging: true,
+                        route: bestRoute,
+                        step: firstStep,
+                        stepIndex: 0,
+                        totalSteps: bestRoute.steps.length,
+                      })
+                      gotQuoteFromRoutes = true
+                    } else if (stepWithTx.transactionRequest) {
+                      // For regular transaction steps (one-step bridge), use transactionRequest
+                      setQuote({
+                        ...stepWithTx,
+                        isMessaging: false,
+                        route: bestRoute,
+                        step: firstStep,
+                        stepIndex: 0,
+                        totalSteps: bestRoute.steps.length,
+                      })
+                      gotQuoteFromRoutes = true
+                    } else {
+                      // Fallback to simple quote
+                      throw new Error('No transaction data in step')
+                    }
+                  } catch (stepError: any) {
+                    console.error('Error getting step transaction:', stepError)
+                    // Fallback to simple quote
+                    throw stepError
+                  }
+                } else {
+                  throw new Error('No valid route found')
+                }
+              } else {
+                // No routes available - fall through to try simple quote API
+                console.log('No routes available in response:', routesData)
+                console.log('Falling back to simple quote API')
+              }
+            } catch (routesError: any) {
+              console.error('Routes error for Hyperliquid one-step transfer:', routesError)
+              // If routes API fails, try falling back to simple quote API
+              console.log('Routes API failed, falling back to simple quote API')
+              gotQuoteFromRoutes = false
+            }
+          }
+        
+        // Fall back to simple quote if routes didn't work or not using Hyperliquid direct
+        // For Hyperliquid, require address to be entered (don't default to current wallet)
+        // UNLESS using advanced bridge mode (showCustomToField)
+        if (!gotQuoteFromRoutes) {
+          // If Hyperliquid is selected but no address entered AND not using advanced bridge, don't fetch quote
+          const isHyperliquidSelected = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+          if (isHyperliquidSelected && !showCustomToField && !normalizedHyperliquidAddress) {
+            setQuoteError('Please enter a Hyperliquid core account address')
+            setLoadingQuote(false)
+            return
+          }
+          
+          try {
+            const quoteData = await getQuote({
               fromChain: fromChain.id,
               toChain: toChain.id,
               fromToken: fromToken.symbol,
               toToken: toToken.symbol,
               fromAmount: amount,
               fromAddress: address,
-              toAddress: ((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && hyperliquidAddress ? hyperliquidAddress : address,
+              toAddress: isHyperliquidDirect ? normalizedHyperliquidAddress! : (showCustomToField ? address : address),
               slippage: 0.03, // 3% slippage
             })
+            
+            if (quoteData) {
+              // CRITICAL: Reject quote if it's not on the fromChain
+              const requiredChainId = quoteData.transactionRequest?.chainId || quoteData.action?.fromChainId
+              const expectedChainId = CHAIN_IDS[fromChain.id]
+              
+              if (requiredChainId !== expectedChainId) {
+                const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+                setQuoteError(`❌ This route requires ${wrongChainName} instead of ${fromChain.name}. Please try again or select a different route.`)
+                setQuote(null)
+                setNeedsApproval(false)
+                console.error('Quote rejected - wrong chain:', {
+                  expected: expectedChainId,
+                  got: requiredChainId,
+                  fromChain: fromChain.name
+                })
+                setLoadingQuote(false)
+                return
+              }
+              
+              setQuote(quoteData)
+              setQuoteError(null)
+              
+              // Check if approval is needed
+              if (quoteData.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
+                setNeedsApproval(true)
+              } else {
+                setNeedsApproval(false)
+              }
+            } else {
+              // More specific error message
+              const errorMsg = 'Unable to fetch quote. Please check that both tokens are available on the selected chains.'
+              setQuoteError(errorMsg)
+              setNeedsApproval(false)
+            }
           } catch (quoteError: any) {
             console.error('Quote error:', quoteError)
             setQuoteError(quoteError?.message || 'Unable to fetch quote. Please try again.')
-            setLoadingQuote(false)
-            return
-          }
-        }
-
-        if (quoteData) {
-          // CRITICAL: Reject quote if it's not on the fromChain
-          const requiredChainId = quoteData.transactionRequest?.chainId || quoteData.action.fromChainId
-          const expectedChainId = CHAIN_IDS[fromChain.id]
-          
-          if (requiredChainId !== expectedChainId) {
-            const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
-            setQuoteError(`❌ This route requires ${wrongChainName} instead of ${fromChain.name}. Please try again or select a different route.`)
-            setQuote(null)
             setNeedsApproval(false)
-            console.error('Quote rejected - wrong chain:', {
-              expected: expectedChainId,
-              got: requiredChainId,
-              fromChain: fromChain.name
-            })
-            return
           }
-          
-          setQuote(quoteData)
-          setQuoteError(null)
-          
-          // Check if approval is needed
-          if (quoteData.estimate.approvalAddress && fromToken.symbol !== 'ETH') {
+        } else {
+          // Quote was set from routes - check if approval is needed
+          if (quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
             setNeedsApproval(true)
           } else {
             setNeedsApproval(false)
           }
-        } else {
-          // More specific error message
-          const errorMsg = quoteError || 'Unable to fetch quote. Please check that both tokens are available on the selected chains.'
-          setQuoteError(errorMsg)
-          setNeedsApproval(false)
         }
       } catch (error: any) {
         console.error('Error fetching quote:', error)
@@ -5907,7 +6098,7 @@ export default function BridgePage() {
     // Debounce quote fetching
     const timeoutId = setTimeout(fetchQuote, 500)
     return () => clearTimeout(timeoutId)
-  }, [isConnected, address, fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress])
+  }, [isConnected, address, fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress, showCustomToField])
 
   const handleSwapChains = () => {
     const temp = fromChain
@@ -5939,91 +6130,158 @@ export default function BridgePage() {
     if (!quote || !address || !isConnected) return
 
     // If approval is needed and not confirmed, don't proceed
-    if (needsApproval && quote.estimate.approvalAddress && !isApprovalConfirmed) {
+    if (needsApproval && quote.estimate?.approvalAddress && !isApprovalConfirmed) {
       setQuoteError('Please approve the token first')
       return
     }
 
     try {
-      const txRequest = quote.transactionRequest
-      if (!txRequest) {
-        setQuoteError('No transaction data available')
-        return
-      }
-
-      // Check if user is on the correct chain
-      // The transaction should be on the fromChain, not any intermediate chain
-      const expectedChainId = CHAIN_IDS[fromChain.id]
-      const requiredChainId = txRequest.chainId || quote.action.fromChainId
-      const currentChainId = chain?.id
-
-      console.log('Chain check:', {
-        fromChain: fromChain.name,
-        expectedChainId,
-        requiredChainId,
-        currentChainId,
-        txRequestChainId: txRequest.chainId
-      })
-
-      // CRITICAL: Reject if the transaction is not on the fromChain
-      // This prevents signing on the wrong network (e.g., Ethereum when bridging from Base)
-      if (requiredChainId !== expectedChainId) {
-        setChainMismatch(true)
-        const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
-        setQuoteError(`❌ Error: This route requires ${wrongChainName} instead of ${fromChain.name}. Please refresh to get a direct route.`)
-        console.error('Chain mismatch - rejecting transaction:', {
-          expected: expectedChainId,
-          got: requiredChainId,
-          fromChain: fromChain.name,
-          txRequest: txRequest
-        })
-        return // BLOCK the transaction
-      }
-
-      // Check if user is on the correct chain
-      if (currentChainId !== requiredChainId) {
-        setChainMismatch(true)
-        const chainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
-        setQuoteError(`Please switch to ${chainName} (Chain ID: ${requiredChainId}) to execute this transaction`)
-        
-        // Try to switch chain automatically
-        if (switchChain && requiredChainId) {
-          try {
-            try {
-              const result = switchChain({ chainId: requiredChainId as number }) as any
-              if (result && typeof result === 'object' && typeof result.then === 'function') {
-                await result
-              }
-            } catch (err) {
-              // Ignore - chain switch might not return a promise
-            }
-            setChainMismatch(false)
+      // Check if this is a messaging step (for Hyperliquid direct transfers)
+      const isMessaging = quote.isMessaging || quote.type === 'message' || quote.message
+      
+      if (isMessaging && quote.message) {
+        // Handle messaging flow - sign EIP-712 message
+        try {
+          const message = quote.message
+          
+          // Sign the typed data
+          const signature = await signTypedDataAsync({
+            domain: message.domain,
+            types: message.types,
+            primaryType: message.primaryType,
+            message: message.message,
+          })
+          
+          console.log('Message signed:', signature)
+          
+          // Relay the signed message
+          const relayResult = await relayMessage(quote.step, signature)
+          
+          console.log('Message relayed:', relayResult)
+          
+          // For messaging, we don't get a txHash immediately
+          // The relay endpoint returns a status that we can track
+          if (relayResult.status || relayResult.txHash) {
+            // Set a pseudo txHash for tracking (or use the relay result)
+            // Note: For messaging, we might need to track differently
             setQuoteError(null)
-            // Wait a moment for chain switch, then retry
-            setTimeout(() => {
-              handleBridge()
-            }, 1000)
-            return
-          } catch (switchError: any) {
-            console.error('Error switching chain:', switchError)
-            setQuoteError(`Please manually switch to ${chainName} in your wallet`)
-            return
+            // Show success message
+            setSuccessDetails({
+              fromToken: fromToken.symbol,
+              toChain: toChain.name,
+            })
+            // Note: We might need to poll for status instead of using txHash
           }
+        } catch (messageError: any) {
+          console.error('Error signing/relaying message:', messageError)
+          setQuoteError(messageError?.message || 'Failed to sign or relay message')
+          return
         }
-        return
+      } else {
+        // Handle regular transaction flow (bridge transaction - first step)
+        const txRequest = quote.transactionRequest
+        if (!txRequest) {
+          setQuoteError('No transaction data available')
+          return
+        }
+
+        // Check if this is a multi-step route (for Hyperliquid direct transfers)
+        const isMultiStep = quote.route && quote.route.steps && quote.route.steps.length > 1
+        
+        // If multi-step, mark that we're executing steps
+        if (isMultiStep) {
+          setExecutingSteps(true)
+          setCurrentStepIndex(0)
+        }
+
+        // Check if user is on the correct chain
+        // The transaction should be on the fromChain, not any intermediate chain
+        const expectedChainId = CHAIN_IDS[fromChain.id]
+        const requiredChainId = txRequest.chainId || quote.action?.fromChainId
+        const currentChainId = chain?.id
+
+        console.log('Chain check:', {
+          fromChain: fromChain.name,
+          expectedChainId,
+          requiredChainId,
+          currentChainId,
+          txRequestChainId: txRequest.chainId,
+          isMultiStep,
+          totalSteps: quote.totalSteps
+        })
+
+        // CRITICAL: Reject if the transaction is not on the fromChain
+        // This prevents signing on the wrong network (e.g., Ethereum when bridging from Base)
+        if (requiredChainId !== expectedChainId) {
+          setChainMismatch(true)
+          const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+          setQuoteError(`❌ Error: This route requires ${wrongChainName} instead of ${fromChain.name}. Please refresh to get a direct route.`)
+          console.error('Chain mismatch - rejecting transaction:', {
+            expected: expectedChainId,
+            got: requiredChainId,
+            fromChain: fromChain.name,
+            txRequest: txRequest
+          })
+          if (isMultiStep) {
+            setExecutingSteps(false)
+            setCurrentStepIndex(0)
+          }
+          return // BLOCK the transaction
+        }
+
+        // Check if user is on the correct chain
+        if (currentChainId !== requiredChainId) {
+          setChainMismatch(true)
+          const chainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+          setQuoteError(`Please switch to ${chainName} (Chain ID: ${requiredChainId}) to execute this transaction`)
+          
+          // Try to switch chain automatically
+          if (switchChain && requiredChainId) {
+            try {
+              try {
+                const result = switchChain({ chainId: requiredChainId as number }) as any
+                if (result && typeof result === 'object' && typeof result.then === 'function') {
+                  await result
+                }
+              } catch (err) {
+                // Ignore - chain switch might not return a promise
+              }
+              setChainMismatch(false)
+              setQuoteError(null)
+              // Wait a moment for chain switch, then retry
+              setTimeout(() => {
+                handleBridge()
+              }, 1000)
+              return
+            } catch (switchError: any) {
+              console.error('Error switching chain:', switchError)
+              setQuoteError(`Please manually switch to ${chainName} in your wallet`)
+              if (isMultiStep) {
+                setExecutingSteps(false)
+                setCurrentStepIndex(0)
+              }
+              return
+            }
+          }
+          if (isMultiStep) {
+            setExecutingSteps(false)
+            setCurrentStepIndex(0)
+          }
+          return
+        }
+
+        setChainMismatch(false)
+
+        // Execute the transaction using sendTransaction
+        // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
+        sendTransaction({
+          to: txRequest.to as `0x${string}`,
+          value: BigInt(txRequest.value || '0'),
+          data: txRequest.data as `0x${string}`,
+          gas: txRequest.gasLimit ? BigInt(txRequest.gasLimit) : undefined,
+          // Don't set gasPrice - let wagmi handle it with EIP-1559
+        })
       }
-
-      setChainMismatch(false)
-
-      // Execute the transaction using sendTransaction
-      // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
-      sendTransaction({
-        to: txRequest.to as `0x${string}`,
-        value: BigInt(txRequest.value || '0'),
-        data: txRequest.data as `0x${string}`,
-        gas: txRequest.gasLimit ? BigInt(txRequest.gasLimit) : undefined,
-        // Don't set gasPrice - let wagmi handle it with EIP-1559
-      })
     } catch (error: any) {
       console.error('Error executing bridge:', error)
       setQuoteError(error?.message || 'Failed to execute bridge transaction')
@@ -6101,9 +6359,9 @@ export default function BridgePage() {
                       <div className="text-xs text-gray-400">{fromChain.name}</div>
                     </div>
                   </div>
-                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                 </button>
                 
                 {showFromSelector && (
@@ -6121,7 +6379,7 @@ export default function BridgePage() {
                         onClick={(e) => e.stopPropagation()}
                         className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                       />
-                    </div>
+                  </div>
                     
                     {/* Chain Filter Buttons */}
                     <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
@@ -6155,8 +6413,8 @@ export default function BridgePage() {
                           {chain.name}
                         </button>
                       ))}
-                    </div>
-                    
+                </div>
+
                     {/* Token List */}
                     <div 
                       className="p-2 max-h-64 overflow-y-auto"
@@ -6352,12 +6610,12 @@ export default function BridgePage() {
                             {hasMore && (
                               <div className="text-center py-2 text-xs text-gray-500">
                                 Scroll for more tokens...
-                              </div>
+                  </div>
                             )}
                           </>
                         )
                       })()}
-                    </div>
+                </div>
                   </div>
                 )}
               </div>
@@ -6424,9 +6682,9 @@ export default function BridgePage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm text-gray-400 font-medium">To</label>
-                {isConnected && hyperliquidAddress && (
+                {isConnected && hyperliquidAddress && !showCustomToField && (
                   <span className="text-xs text-mint font-medium">
-                    Direct to Core Account
+                    One-Step to HyperCore
                   </span>
                 )}
               </div>
@@ -6439,26 +6697,35 @@ export default function BridgePage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs text-gray-400 font-medium">
-                          Direct to Hyperliquid Core Account
+                          One-Step Route to HyperCore Account
                         </label>
                       </div>
                       <input
                         type="text"
                         value={hyperliquidAddress}
                         onChange={(e) => {
-                          setHyperliquidAddress(e.target.value)
+                          const inputValue = e.target.value.trim()
+                          setHyperliquidAddress(inputValue)
                           // Clear quote when address changes
-                          if (e.target.value !== hyperliquidAddress) {
+                          if (inputValue !== hyperliquidAddress) {
                             setQuote(null)
                             setQuoteError(null)
                           }
                         }}
-                        placeholder="Enter Hyperliquid core account address"
+                        placeholder="Enter Hyperliquid core account address (0x...)"
                         className="bridge-input w-full px-4 py-3 rounded-xl text-sm placeholder-gray-600 focus:border-mint/40"
                       />
                       {hyperliquidAddress && (
-                        <div className="text-xs text-mint/80 mt-1">
-                          ✓ Funds will be sent directly to this Hyperliquid core account
+                        <div className="text-xs mt-1">
+                          {isAddress(hyperliquidAddress) ? (
+                            <span className="text-mint/80">
+                              ✓ One-step route: Sign once and receive funds on HyperCore
+                            </span>
+                          ) : (
+                            <span className="text-red-400">
+                              ⚠ Invalid address format. Please enter a valid Ethereum address (0x...)
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -6481,9 +6748,9 @@ export default function BridgePage() {
                       <div className="text-xs text-gray-400">{toChain.name}</div>
                     </div>
                   </div>
-                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                 </button>
                 
                 {showToSelector && (
@@ -6501,7 +6768,7 @@ export default function BridgePage() {
                         onClick={(e) => e.stopPropagation()}
                         className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                       />
-                    </div>
+                  </div>
                     
                     {/* Chain Filter Buttons */}
                     <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
@@ -6535,8 +6802,8 @@ export default function BridgePage() {
                           {chain.name}
                         </button>
                       ))}
-                    </div>
-                    
+                </div>
+
                     {/* Token List */}
                     <div 
                       className="p-2 max-h-64 overflow-y-auto"
@@ -6712,13 +6979,13 @@ export default function BridgePage() {
                             {hasMore && (
                               <div className="text-center py-2 text-xs text-gray-500">
                                 Scroll for more tokens...
-                              </div>
+                  </div>
                             )}
                           </>
                         )
                       })()}
-                    </div>
-                  </div>
+                </div>
+              </div>
                 )}
               </div>
                   )}
@@ -6749,8 +7016,8 @@ export default function BridgePage() {
                     <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
                       {/* Search Bar */}
                       <div className="p-3 border-b border-mint/10">
-                        <input
-                          type="text"
+                  <input
+                    type="text"
                           placeholder="Search token and chain"
                           value={toSearchQuery}
                           onChange={(e) => {
@@ -6984,7 +7251,7 @@ export default function BridgePage() {
 
               {/* Output Amount */}
               <div className="relative">
-                <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
+              <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
                   {loadingQuote ? (
                     <span className="text-sm">Loading quote...</span>
                   ) : quoteError ? (
@@ -7101,6 +7368,22 @@ export default function BridgePage() {
               </div>
             )}
 
+            {/* Multi-step progress indicator */}
+            {executingSteps && quote?.totalSteps && quote.totalSteps > 1 && (
+              <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
+                <div className="text-sm text-mint mb-2">
+                  Step {currentStepIndex + 1} of {quote.totalSteps}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {currentStepIndex === 0 && isConfirmed
+                    ? 'Transaction confirmed. Funds arriving on HyperCore...'
+                    : currentStepIndex === 0
+                    ? 'Executing one-step route to HyperCore...'
+                    : 'Completing transfer to HyperCore account...'}
+                </div>
+              </div>
+            )}
+
             {/* Bridge Button */}
             <button
               disabled={
@@ -7115,7 +7398,10 @@ export default function BridgePage() {
                 isConfirming ||
                 isApproving ||
                 isApprovalConfirming ||
-                isSwitchingChain
+                isSwitchingChain ||
+                (executingSteps && currentStepIndex > 0 && isSigningMessage) ||
+                // Require Hyperliquid address when Hyperliquid is selected
+                (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
               }
               onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
@@ -7125,16 +7411,22 @@ export default function BridgePage() {
                 : loadingQuote 
                 ? 'Loading Quote...' 
                 : !quote 
-                ? 'Enter Amount' 
+                ? (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
+                  ? 'Enter Hyperliquid Address'
+                  : 'Enter Amount'
                 : chainMismatch
                 ? 'Switch Chain First'
                 : needsApproval && !isApprovalConfirmed
                 ? 'Approve Token First'
                 : isSwitchingChain
                 ? 'Switching Chain...'
+                : executingSteps && currentStepIndex > 0 && isSigningMessage
+                ? 'Signing Message...'
+                : executingSteps && currentStepIndex > 0
+                ? 'Executing Messaging Step...'
                 : isPendingTx || isConfirming
                 ? isConfirming ? 'Confirming...' : 'Processing...'
-                : isConfirmed
+                : isConfirmed && !executingSteps
                 ? 'Bridge Complete!'
                 : 'Bridge'}
             </button>
@@ -7144,7 +7436,7 @@ export default function BridgePage() {
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <div className="text-sm text-yellow-400 mb-2">
                   {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
-                </div>
+          </div>
                 <a
                   href={`${chain?.blockExplorers?.default?.url}/tx/${approvalHash}`}
                   target="_blank"

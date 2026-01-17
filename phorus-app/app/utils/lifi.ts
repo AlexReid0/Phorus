@@ -5668,6 +5668,61 @@ function getTokenAddressKey(chainId: string): string {
   return chainKeyMap[chainId] || chainId
 }
 
+/**
+ * Query LiFi API for token address (for special cases like Hyperliquid spot USDC)
+ */
+async function getTokenFromLiFi(chainId: number, tokenSymbol: string): Promise<string | null> {
+  try {
+    // For Hyperliquid, try to get the spot USDC token
+    if (chainId === 1337 && tokenSymbol === 'USDC') {
+      // Try different variations of USDC symbol that LiFi might use
+      const symbolVariations = ['USDC', 'USDC Spot', 'USDC-SPOT', 'USDC_SPOT']
+      
+      for (const symbol of symbolVariations) {
+        try {
+          const response = await fetch(`${LIFI_API_BASE}/token?chain=1337&token=${encodeURIComponent(symbol)}`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.address) {
+              console.log(`Found Hyperliquid ${symbol} address from LiFi:`, data.address)
+              return data.address
+            }
+          }
+        } catch (err) {
+          // Continue to next variation
+          continue
+        }
+      }
+      
+      // Also try querying all tokens for Hyperliquid and search for USDC
+      try {
+        const response = await fetch(`${LIFI_API_BASE}/tokens?chain=1337`)
+        if (response.ok) {
+          const data = await response.json()
+          if (Array.isArray(data.tokens)) {
+            // Look for USDC tokens
+            const usdcToken = data.tokens.find((token: any) => 
+              token.symbol?.toUpperCase() === 'USDC' || 
+              token.name?.toLowerCase().includes('usdc') ||
+              token.name?.toLowerCase().includes('spot')
+            )
+            if (usdcToken?.address) {
+              console.log('Found Hyperliquid USDC token from LiFi tokens list:', usdcToken)
+              return usdcToken.address
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error querying LiFi tokens list:', err)
+      }
+    }
+    return null
+  } catch (error) {
+    console.error('Error querying LiFi token API:', error)
+    return null
+  }
+}
+
 function findTokenAddress(symbol: string, chainId: string): string | null {
   // For native tokens (ETH), use the zero address
   if (symbol === 'ETH' || symbol === 'WETH') {
@@ -5734,8 +5789,18 @@ export async function getQuote(params: {
     }
 
     // Look up token addresses using helper function
-    const fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
-    const toTokenAddress = findTokenAddress(params.toToken, params.toChain)
+    let fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
+    let toTokenAddress = findTokenAddress(params.toToken, params.toChain)
+
+    // For Hyperliquid USDC, try querying LiFi API for the correct spot USDC address
+    if (!toTokenAddress && toChainId === 1337 && params.toToken === 'USDC') {
+      console.log('Querying LiFi API for Hyperliquid spot USDC...')
+      const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
+      if (lifiTokenAddress) {
+        toTokenAddress = lifiTokenAddress
+        console.log('Found Hyperliquid spot USDC address from LiFi:', toTokenAddress)
+      }
+    }
 
     if (!fromTokenAddress || !toTokenAddress) {
       const missingTokens = []
@@ -5830,8 +5895,18 @@ export async function getRoutes(params: {
     }
 
     // Look up token addresses using helper function
-    const fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
-    const toTokenAddress = findTokenAddress(params.toToken, params.toChain)
+    let fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
+    let toTokenAddress = findTokenAddress(params.toToken, params.toChain)
+
+    // For Hyperliquid USDC, try querying LiFi API for the correct spot USDC address
+    if (!toTokenAddress && toChainId === 1337 && params.toToken === 'USDC') {
+      console.log('Querying LiFi API for Hyperliquid spot USDC...')
+      const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
+      if (lifiTokenAddress) {
+        toTokenAddress = lifiTokenAddress
+        console.log('Found Hyperliquid spot USDC address from LiFi:', toTokenAddress)
+      }
+    }
 
     if (!fromTokenAddress || !toTokenAddress) {
       const missingTokens = []
@@ -5902,6 +5977,87 @@ export async function getRoutes(params: {
   } catch (error) {
     console.error('Error fetching routes:', error)
     return null
+  }
+}
+
+/**
+ * Get step transaction data (for messaging flow)
+ */
+export async function getStepTransaction(step: any): Promise<any> {
+  try {
+    const response = await fetch(`${LIFI_API_BASE}/advanced/stepTransaction`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        step,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorMessage = 'Unknown error'
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.message || errorJson.error || errorText
+      } catch {
+        errorMessage = errorText
+      }
+      console.error('LiFi stepTransaction API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorMessage
+      })
+      throw new Error(errorMessage || `LiFi stepTransaction API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error fetching step transaction:', error)
+    throw error
+  }
+}
+
+/**
+ * Relay a signed message (for messaging flow)
+ */
+export async function relayMessage(step: any, signature: string): Promise<any> {
+  try {
+    const response = await fetch(`${LIFI_API_BASE}/advanced/relay`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        step,
+        signature,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      let errorMessage = 'Unknown error'
+      try {
+        const errorJson = JSON.parse(errorText)
+        errorMessage = errorJson.message || errorJson.error || errorText
+      } catch {
+        errorMessage = errorText
+      }
+      console.error('LiFi relay API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorMessage
+      })
+      throw new Error(errorMessage || `LiFi relay API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return data
+  } catch (error) {
+    console.error('Error relaying message:', error)
+    throw error
   }
 }
 
