@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { request } from 'graphql-request'
 import { LEADERBOARD_QUERY, LeaderboardResponse, UserEntity, SUBGRAPH_URLS } from '../lib/graph'
 import { formatUnits } from 'viem'
+import { motion } from 'framer-motion'
+import { Shield, Zap } from 'lucide-react'
+import { useState } from 'react'
 
 export default function Leaderboard() {
     const { data, isLoading, error } = useQuery({
@@ -29,23 +32,21 @@ export default function Leaderboard() {
             allUsers.forEach(user => {
                 const existing = userMap.get(user.id)
                 if (existing) {
-                    // correct big int math using string manipulation or BigInt
                     userMap.set(user.id, {
                         ...existing,
                         depositVolume: (BigInt(existing.depositVolume) + BigInt(user.depositVolume)).toString(),
                         totalFeesPaid: (BigInt(existing.totalFeesPaid) + BigInt(user.totalFeesPaid)).toString(),
                         bridgeCount: (BigInt(existing.bridgeCount) + BigInt(user.bridgeCount)).toString(),
-                        // Combine activities and sort by timestamp desc
                         activities: [...existing.activities, ...user.activities]
                             .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
-                            .slice(0, 5) // Keep top 5 latest
+                            .slice(0, 5)
                     })
                 } else {
                     userMap.set(user.id, user)
                 }
             })
 
-            // Convert back to array and sort by total volume
+            // Sort by volume descending
             const aggregatedUsers = Array.from(userMap.values())
                 .sort((a, b) => {
                     const volA = BigInt(a.depositVolume)
@@ -57,72 +58,93 @@ export default function Leaderboard() {
         }
     })
 
-    if (isLoading) return <div className="text-center p-8 text-gray-500">Loading leaderboard...</div>
     if (error) return <div className="text-center p-8 text-red-500">Error loading leaderboard</div>
 
     return (
-        <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* Header section moved to page.tsx, just the table container here */}
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
+            transition={{ duration: 0.8 }}
+            className="space-y-6"
+        >
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-white/10 pb-6">
+                <div>
+                    <h2 className="text-3xl font-serif text-white mb-2">Leaderboard</h2>
+                    <p className="text-sm text-white/50">Top routers this season.</p>
+                </div>
+            </div>
 
-            <div className="bg-black/20 border border-white/10 rounded-3xl overflow-hidden backdrop-blur-md shadow-2xl">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-white/5 text-gray-500 text-xs uppercase tracking-widest font-medium">
-                            <th className="py-6 pl-8 w-24">Rank</th>
-                            <th className="py-6 px-4">User</th>
-                            {/* Points column hidden per request */}
-                            {/* <th className="py-6 px-8 text-right w-32">Points</th> */}
-                            <th className="py-6 px-8 text-right w-48">Volume (USDC)</th>
-                            <th className="py-6 pr-12 text-right w-24">Bridges</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {data?.users.map((user, index) => (
-                            <tr key={user.id} className="group hover:bg-white/[0.02] transition-colors duration-300">
-                                <td className="py-5 pl-8 font-mono text-sm text-gray-600 group-hover:text-gray-500 transition-colors">
-                                    {(index + 1).toString().padStart(2, '0')}
-                                </td>
-                                <td className="py-5 px-4 relative">
-                                    {/* Gradient mask for fading out the address before it hits the next column */}
-                                    <div className="relative max-w-[180px] sm:max-w-[250px] md:max-w-[350px] lg:max-w-[400px]">
-                                        <div className="font-mono text-sm text-[#94f2d3] truncate"
-                                            style={{ maskImage: 'linear-gradient(to right, black 90%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to right, black 90%, transparent 100%)' }}>
-                                            {user.id}
-                                        </div>
+            {/* Table */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-sm">
+                <div className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-white/10 text-[10px] uppercase tracking-[0.2em] font-bold text-white/40">
+                    <div className="col-span-2 md:col-span-1 text-center">Rank</div>
+                    <div className="col-span-5 md:col-span-5">Address</div>
+                    <div className="col-span-3 md:col-span-3 text-right">Volume (USDC)</div>
+                    <div className="col-span-2 md:col-span-3 text-right">Bridges</div>
+                </div>
+
+                <div className="divide-y divide-white/5">
+                    {isLoading ? (
+                        <div className="p-8 text-center text-gray-500 font-mono text-sm">Loading data...</div>
+                    ) : data?.users.length === 0 ? (
+                        <div className="p-8 text-center text-gray-500 font-light">No activity recorded yet.</div>
+                    ) : (
+                        data?.users.map((user, i) => {
+                            // Calculate metrics
+                            const volRaw = BigInt(user.depositVolume)
+                            const volFloat = parseFloat(formatUnits(volRaw, 6))
+
+                            return (
+                                <div key={user.id} className={`grid grid-cols-12 gap-4 px-6 py-4 items-center transition-colors hover:bg-white/[0.02] ${i < 3 ? "bg-[#A8F5D0]/[0.02]" : ""}`}>
+                                    {/* Rank */}
+                                    <div className="col-span-2 md:col-span-1 flex justify-center">
+                                        {i < 3 ? (
+                                            <span className="w-6 h-6 rounded-full bg-[#A8F5D0] text-[#0A1F0A] flex items-center justify-center font-bold text-xs">
+                                                {i + 1}
+                                            </span>
+                                        ) : (
+                                            <span className="text-white/50 font-mono text-sm">{i + 1}</span>
+                                        )}
                                     </div>
-                                </td>
-                                {/* Points column hidden
-                                <td className="py-5 px-8 text-right">
-                                    <span className="font-sans font-bold text-white tracking-tight tabular-nums">
-                                        {BigInt(user.depositVolume) >= BigInt(10000000) // 10 USDC (6 decimals)
-                                            ? Math.floor(parseFloat(formatUnits(BigInt(user.depositVolume), 6)) / 5).toLocaleString()
-                                            : '0'}
-                                    </span>
-                                </td> */}
-                                <td className="py-5 px-8 text-right">
-                                    <span className="text-gray-300 font-light tracking-wide tabular-nums">
-                                        ${parseFloat(formatUnits(BigInt(user.depositVolume), 6)).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                    </span>
-                                </td>
-                                <td className="py-5 pr-12 text-right text-gray-400 font-mono text-sm">
-                                    {user.bridgeCount}
-                                </td>
-                            </tr>
-                        ))}
-                        {data?.users.length === 0 && (
-                            <tr>
-                                <td colSpan={5} className="py-24 text-center text-gray-500 font-light">
-                                    No activity recorded yet.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+
+                                    {/* Address */}
+                                    <div className="col-span-5 md:col-span-5 text-white font-mono text-sm truncate pr-4 text-[#A8F5D0]">
+                                        {user.id}
+                                    </div>
+
+                                    {/* Volume */}
+                                    <div className="col-span-3 md:col-span-3 text-right font-mono text-[#A8F5D0] text-sm">
+                                        ${volFloat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </div>
+
+                                    {/* Bridges */}
+                                    <div className="col-span-2 md:col-span-3 text-right text-white/60 font-mono text-sm">
+                                        {user.bridgeCount}
+                                    </div>
+                                </div>
+                            )
+                        })
+                    )}
+                </div>
             </div>
 
-            <div className="mt-6 text-center text-xs text-gray-600 font-light">
-                Updates every few minutes • Tracking USDC bridging volume only
+            {/* Footer Disclaimers */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/30 pt-2">
+                <p>Leaderboard data may be delayed.</p>
+
+                <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2 text-white/40">
+                        <Shield className="w-3 h-3" />
+                        <span className="uppercase tracking-wider">This is not a testnet</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-white/40">
+                        <Zap className="w-3 h-3" />
+                        <span className="uppercase tracking-wider">This is not a faucet</span>
+                    </div>
+                </div>
             </div>
-        </div>
+        </motion.div>
     )
 }
