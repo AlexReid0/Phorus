@@ -1,6 +1,9 @@
 // LiFi API utility functions
 
 const LIFI_API_BASE = 'https://li.quest/v1'
+// Get integrator ID from environment variable (for tracking in LiFi portal)
+// This should be set in .env.local as NEXT_PUBLIC_LIFI_INTEGRATOR_ID
+const LIFI_INTEGRATOR_ID = process.env.NEXT_PUBLIC_LIFI_INTEGRATOR_ID || ''
 
 // Chain ID mapping (LiFi uses numeric chain IDs)
 export const CHAIN_IDS: Record<string, number> = {
@@ -5747,6 +5750,10 @@ export async function getQuote(params: {
       url.searchParams.set('toAddress', params.toAddress)
     }
     url.searchParams.set('slippage', slippage.toString())
+    // Add integrator ID for tracking in LiFi portal
+    if (LIFI_INTEGRATOR_ID) {
+      url.searchParams.set('integrator', LIFI_INTEGRATOR_ID)
+    }
 
     const response = await fetch(url.toString())
     
@@ -5842,6 +5849,7 @@ export async function getRoutes(params: {
         toAddress: params.toAddress,
         options: {
           slippage,
+          ...(LIFI_INTEGRATOR_ID && { integrator: LIFI_INTEGRATOR_ID }),
         },
       }),
     })
