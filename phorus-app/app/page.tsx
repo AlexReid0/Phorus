@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi } from 'viem'
+import Link from 'next/link'
 import ConnectWallet from './components/ConnectWallet'
 import ChainIcon from './components/ChainIcon'
 import TokenIcon from './components/TokenIcon'
@@ -64,20 +65,20 @@ const getTokensForChain = (chainId: string): Token[] => {
       { symbol: 'ETH', name: 'Ethereum' },
     ],
   }
-  
+
   return chainTokens[chainId] || chainTokens.ethereum
 }
 
 export default function BridgePage() {
   const { address, isConnected, chain } = useAccount()
-  
+
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
   const [toChain, setToChain] = useState<Chain>(chains[4]) // Hyperliquid
   const [fromToken, setFromToken] = useState<Token>(getTokensForChain(chains[0].id)[0])
   const [toToken, setToToken] = useState<Token>(getTokensForChain(chains[4].id)[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
-  
+
   // State for unified selector
   const [showFromSelector, setShowFromSelector] = useState(false)
   const [showToSelector, setShowToSelector] = useState(false)
@@ -85,10 +86,10 @@ export default function BridgePage() {
   const [toSearchQuery, setToSearchQuery] = useState('')
   const [fromChainFilter, setFromChainFilter] = useState<string | null>(null)
   const [toChainFilter, setToChainFilter] = useState<string | null>(null)
-  
+
   // Get native balance
   const { data: nativeBalance } = useBalance({ address })
-  
+
   // Get token balance when a token is selected (not ETH)
   // Compute token address based on current chain and token symbol
   const tokenAddress = useMemo(() => {
@@ -102,7 +103,7 @@ export default function BridgePage() {
     }
     return address as `0x${string}` | undefined
   }, [fromChain.id, fromToken.symbol])
-  
+
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } = useBalance({
     address,
     token: tokenAddress,
@@ -110,7 +111,7 @@ export default function BridgePage() {
       enabled: !!tokenAddress && isConnected && !!fromToken.symbol && tokenAddress !== '0x0000000000000000000000000000000000000000',
     },
   })
-  
+
   // Use token balance if available, otherwise native balance (only for ETH)
   // If token is not ETH and we don't have a valid token address or balance, show null/zero
   const balance = useMemo(() => {
@@ -132,33 +133,33 @@ export default function BridgePage() {
     // Fallback to native balance only if token query completed but returned no balance
     return nativeBalance
   }, [fromToken.symbol, tokenAddress, tokenBalance, nativeBalance, isLoadingTokenBalance])
-  
+
   // Quote state
   const [quote, setQuote] = useState<any>(null)
   const [loadingQuote, setLoadingQuote] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
-  
+
   // Transaction state
   const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
   const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
-  const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
+  const { switchChain, switchChainAsync, isPending: isSwitchingChain } = useSwitchChain()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   })
   const { isLoading: isApprovalConfirming, isSuccess: isApprovalConfirmed } = useWaitForTransactionReceipt({
     hash: approvalHash,
   })
-  
+
   // Approval state
   const [needsApproval, setNeedsApproval] = useState(false)
   const [chainMismatch, setChainMismatch] = useState(false)
-  
+
   // Store transaction details for success popup
   const [successDetails, setSuccessDetails] = useState<{
     fromToken: string
     toChain: string
   } | null>(null)
-  
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -182,7 +183,7 @@ export default function BridgePage() {
         fromToken: fromToken.symbol,
         toChain: toChain.name,
       })
-      
+
       // Reset form after a short delay to show popup
       const timer = setTimeout(() => {
         setAmount('')
@@ -192,7 +193,7 @@ export default function BridgePage() {
         setChainMismatch(false)
         setSuccessDetails(null)
       }, 5000) // Show popup for 5 seconds
-      
+
       return () => clearTimeout(timer)
     }
   }, [isConfirmed, txHash, fromToken.symbol, toChain.name])
@@ -224,7 +225,7 @@ export default function BridgePage() {
     const fetchQuote = async () => {
       setLoadingQuote(true)
       setQuoteError(null)
-      
+
       try {
         // Try to get advanced routes first to find direct routes
         const routesData = await getRoutes({
@@ -274,7 +275,7 @@ export default function BridgePage() {
           // CRITICAL: Reject quote if it's not on the fromChain
           const requiredChainId = quoteData.transactionRequest?.chainId || quoteData.action.fromChainId
           const expectedChainId = CHAIN_IDS[fromChain.id]
-          
+
           if (requiredChainId !== expectedChainId) {
             const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
             setQuoteError(`❌ This route requires ${wrongChainName} instead of ${fromChain.name}. Please try again or select a different route.`)
@@ -287,10 +288,10 @@ export default function BridgePage() {
             })
             return
           }
-          
+
           setQuote(quoteData)
           setQuoteError(null)
-          
+
           // Check if approval is needed
           if (quoteData.estimate.approvalAddress && fromToken.symbol !== 'ETH') {
             setNeedsApproval(true)
@@ -390,14 +391,11 @@ export default function BridgePage() {
         setChainMismatch(true)
         const chainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
         setQuoteError(`Please switch to ${chainName} (Chain ID: ${requiredChainId}) to execute this transaction`)
-        
+
         // Try to switch chain automatically
-        if (switchChain && requiredChainId) {
+        if (requiredChainId) {
           try {
-            const result = switchChain({ chainId: requiredChainId as number })
-            if (result && typeof result.then === 'function') {
-              await result
-            }
+            await switchChainAsync({ chainId: requiredChainId as number })
             setChainMismatch(false)
             setQuoteError(null)
             // Wait a moment for chain switch, then retry
@@ -458,13 +456,23 @@ export default function BridgePage() {
     <main className="min-h-screen relative overflow-x-hidden">
       {/* Fluid gradient background */}
       <div className="fluid-gradient" />
-      
+
       {/* Content */}
       <div className="relative z-10 min-h-screen px-4 py-8 md:py-12">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
+            <div className="flex items-center gap-6">
+              <a href="https://phorus.xyz" className="hover:opacity-80 transition-opacity">
+                <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
+              </a>
+              <Link href="/leaderboard" className="text-gray-400 hover:text-white transition-colors text-sm font-medium flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Leaderboard
+              </Link>
+            </div>
             <ConnectWallet />
           </div>
 
@@ -485,7 +493,7 @@ export default function BridgePage() {
                   </span>
                 )}
               </div>
-              
+
               {/* Unified Chain/Token Selector */}
               <div className="relative selector-dropdown">
                 <button
@@ -506,7 +514,7 @@ export default function BridgePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
+
                 {showFromSelector && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
                     {/* Search Bar */}
@@ -523,7 +531,7 @@ export default function BridgePage() {
                         className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                       />
                     </div>
-                    
+
                     {/* Chain Filter Buttons */}
                     <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
                       <button
@@ -531,11 +539,10 @@ export default function BridgePage() {
                           e.stopPropagation()
                           setFromChainFilter(null)
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                          fromChainFilter === null
-                            ? 'bg-mint/20 text-mint border border-mint/30'
-                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${fromChainFilter === null
+                          ? 'bg-mint/20 text-mint border border-mint/30'
+                          : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                          }`}
                       >
                         All
                       </button>
@@ -546,18 +553,17 @@ export default function BridgePage() {
                             e.stopPropagation()
                             setFromChainFilter(chain.id)
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
-                            fromChainFilter === chain.id
-                              ? 'bg-mint/20 text-mint border border-mint/30'
-                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                          }`}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${fromChainFilter === chain.id
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                            }`}
                         >
                           <ChainIcon chainId={chain.id} size={16} />
                           {chain.name}
                         </button>
                       ))}
                     </div>
-                    
+
                     {/* Token List */}
                     <div className="p-2 max-h-64 overflow-y-auto">
                       {(() => {
@@ -565,23 +571,23 @@ export default function BridgePage() {
                         const filteredChains = fromChainFilter
                           ? chains.filter(c => c.id === fromChainFilter)
                           : chains
-                        
-                        const allTokens = filteredChains.flatMap(chain => 
+
+                        const allTokens = filteredChains.flatMap(chain =>
                           getTokensForChain(chain.id)
-                            .filter(token => 
-                              !fromSearchQuery || 
+                            .filter(token =>
+                              !fromSearchQuery ||
                               token.symbol.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
                               token.name.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
                               chain.name.toLowerCase().includes(fromSearchQuery.toLowerCase())
                             )
                             .map(token => ({ ...token, chain }))
                         )
-                        
+
                         // Remove duplicates by symbol
                         const uniqueTokens = Array.from(
                           new Map(allTokens.map(t => [t.symbol, t])).values()
                         )
-                        
+
                         if (uniqueTokens.length === 0) {
                           return (
                             <div className="text-center py-8 text-gray-500 text-sm">
@@ -589,11 +595,11 @@ export default function BridgePage() {
                             </div>
                           )
                         }
-                        
+
                         return uniqueTokens.map(({ symbol, name, chain: tokenChain }) => (
                           <button
                             key={`${tokenChain.id}-${symbol}`}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation()
                               setFromChain(tokenChain)
                               // Use the clicked token, but verify it exists on the chain
@@ -605,14 +611,11 @@ export default function BridgePage() {
                               setShowFromSelector(false)
                               setQuote(null)
                               setQuoteError(null)
-                              if (isConnected && switchChain) {
+                              if (isConnected) {
                                 const chainId = CHAIN_IDS[tokenChain.id]
                                 if (chainId && chain?.id !== chainId) {
                                   try {
-                                    const result = switchChain({ chainId })
-                                    if (result && typeof result.catch === 'function') {
-                                      result.catch(() => {})
-                                    }
+                                    await switchChainAsync({ chainId })
                                   } catch (error) {
                                     // Silently handle switch chain errors
                                     console.error('Error switching chain:', error)
@@ -620,9 +623,8 @@ export default function BridgePage() {
                                 }
                               }
                             }}
-                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
-                              fromToken.symbol === symbol && fromChain.id === tokenChain.id ? 'bg-mint/10' : ''
-                            }`}
+                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${fromToken.symbol === symbol && fromChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                              }`}
                           >
                             <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
                             <div className="flex-1 text-left">
@@ -705,7 +707,7 @@ export default function BridgePage() {
                   </span>
                 )}
               </div>
-              
+
               {/* Unified Chain/Token Selector */}
               <div className="relative selector-dropdown">
                 <button
@@ -726,7 +728,7 @@ export default function BridgePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
-                
+
                 {showToSelector && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
                     {/* Search Bar */}
@@ -743,7 +745,7 @@ export default function BridgePage() {
                         className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                       />
                     </div>
-                    
+
                     {/* Chain Filter Buttons */}
                     <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
                       <button
@@ -751,11 +753,10 @@ export default function BridgePage() {
                           e.stopPropagation()
                           setToChainFilter(null)
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                          toChainFilter === null
-                            ? 'bg-mint/20 text-mint border border-mint/30'
-                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${toChainFilter === null
+                          ? 'bg-mint/20 text-mint border border-mint/30'
+                          : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                          }`}
                       >
                         All
                       </button>
@@ -766,18 +767,17 @@ export default function BridgePage() {
                             e.stopPropagation()
                             setToChainFilter(chain.id)
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
-                            toChainFilter === chain.id
-                              ? 'bg-mint/20 text-mint border border-mint/30'
-                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                          }`}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${toChainFilter === chain.id
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                            }`}
                         >
                           <ChainIcon chainId={chain.id} size={16} />
                           {chain.name}
                         </button>
                       ))}
                     </div>
-                    
+
                     {/* Token List */}
                     <div className="p-2 max-h-64 overflow-y-auto">
                       {(() => {
@@ -785,23 +785,23 @@ export default function BridgePage() {
                         const filteredChains = toChainFilter
                           ? chains.filter(c => c.id === toChainFilter)
                           : chains
-                        
-                        const allTokens = filteredChains.flatMap(chain => 
+
+                        const allTokens = filteredChains.flatMap(chain =>
                           getTokensForChain(chain.id)
-                            .filter(token => 
-                              !toSearchQuery || 
+                            .filter(token =>
+                              !toSearchQuery ||
                               token.symbol.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
                               token.name.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
                               chain.name.toLowerCase().includes(toSearchQuery.toLowerCase())
                             )
                             .map(token => ({ ...token, chain }))
                         )
-                        
+
                         // Remove duplicates by symbol
                         const uniqueTokens = Array.from(
                           new Map(allTokens.map(t => [t.symbol, t])).values()
                         )
-                        
+
                         if (uniqueTokens.length === 0) {
                           return (
                             <div className="text-center py-8 text-gray-500 text-sm">
@@ -809,7 +809,7 @@ export default function BridgePage() {
                             </div>
                           )
                         }
-                        
+
                         return uniqueTokens.map(({ symbol, name, chain: tokenChain }) => (
                           <button
                             key={`${tokenChain.id}-${symbol}`}
@@ -824,9 +824,8 @@ export default function BridgePage() {
                               setToChainFilter(null)
                               setShowToSelector(false)
                             }}
-                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
-                              toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
-                            }`}
+                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                              }`}
                           >
                             <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
                             <div className="flex-1 text-left">
@@ -878,7 +877,7 @@ export default function BridgePage() {
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Estimated Time</span>
                 <span className="text-white">
-                  {quote?.estimate?.executionDuration 
+                  {quote?.estimate?.executionDuration
                     ? `~${Math.ceil(quote.estimate.executionDuration / 60)} min`
                     : '~2 min'}
                 </span>
@@ -900,8 +899,8 @@ export default function BridgePage() {
                 onClick={handleApproval}
                 className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
               >
-                {isApproving || isApprovalConfirming 
-                  ? isApprovalConfirming ? 'Confirming Approval...' : 'Approving...' 
+                {isApproving || isApprovalConfirming
+                  ? isApprovalConfirming ? 'Confirming Approval...' : 'Approving...'
                   : `Approve ${fromToken.symbol}`}
               </button>
             )}
@@ -911,29 +910,22 @@ export default function BridgePage() {
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <div className="text-sm text-yellow-400 mb-2">Chain Mismatch</div>
                 <div className="text-xs text-yellow-300">
-                  This transaction needs to be executed on {fromChain.name}. 
-                  {switchChain && (
-                    <button
-                      onClick={() => {
-                        const requiredChainId = quote.transactionRequest?.chainId || quote.action.fromChainId
-                        if (requiredChainId && switchChain) {
-                          try {
-                            const result = switchChain({ chainId: requiredChainId as number })
-                            if (result && typeof result.catch === 'function') {
-                              result.catch((error: any) => {
-                                console.error('Error switching chain:', error)
-                              })
-                            }
-                          } catch (error) {
-                            console.error('Error switching chain:', error)
-                          }
+                  This transaction needs to be executed on {fromChain.name}.
+                  <button
+                    onClick={async () => {
+                      const requiredChainId = quote.transactionRequest?.chainId || quote.action.fromChainId
+                      if (requiredChainId) {
+                        try {
+                          await switchChainAsync({ chainId: requiredChainId as number })
+                        } catch (error) {
+                          console.error('Error switching chain:', error)
                         }
-                      }}
-                      className="ml-2 underline hover:text-yellow-200"
-                    >
-                      Switch Chain
-                    </button>
-                  )}
+                      }
+                    }}
+                    className="ml-2 underline hover:text-yellow-200"
+                  >
+                    Switch Chain
+                  </button>
                 </div>
               </div>
             )}
@@ -941,14 +933,14 @@ export default function BridgePage() {
             {/* Bridge Button */}
             <button
               disabled={
-                !isConnected || 
-                !amount || 
-                parseFloat(amount) <= 0 || 
-                loadingQuote || 
-                !quote || 
+                !isConnected ||
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                loadingQuote ||
+                !quote ||
                 (needsApproval && !isApprovalConfirmed) ||
                 chainMismatch ||
-                isPendingTx || 
+                isPendingTx ||
                 isConfirming ||
                 isApproving ||
                 isApprovalConfirming ||
@@ -957,25 +949,25 @@ export default function BridgePage() {
               onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
             >
-              {!isConnected 
-                ? 'Connect Wallet to Bridge' 
-                : loadingQuote 
-                ? 'Loading Quote...' 
-                : !quote 
-                ? 'Enter Amount' 
-                : chainMismatch
-                ? 'Switch Chain First'
-                : needsApproval && !isApprovalConfirmed
-                ? 'Approve Token First'
-                : isSwitchingChain
-                ? 'Switching Chain...'
-                : isPendingTx || isConfirming
-                ? isConfirming ? 'Confirming...' : 'Processing...'
-                : isConfirmed
-                ? 'Bridge Complete!'
-                : 'Bridge'}
+              {!isConnected
+                ? 'Connect Wallet to Bridge'
+                : loadingQuote
+                  ? 'Loading Quote...'
+                  : !quote
+                    ? 'Enter Amount'
+                    : chainMismatch
+                      ? 'Switch Chain First'
+                      : needsApproval && !isApprovalConfirmed
+                        ? 'Approve Token First'
+                        : isSwitchingChain
+                          ? 'Switching Chain...'
+                          : isPendingTx || isConfirming
+                            ? isConfirming ? 'Confirming...' : 'Processing...'
+                            : isConfirmed
+                              ? 'Bridge Complete!'
+                              : 'Bridge'}
             </button>
-            
+
             {/* Approval Transaction Status */}
             {approvalHash && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
@@ -992,7 +984,7 @@ export default function BridgePage() {
                 </a>
               </div>
             )}
-            
+
             {/* Transaction Status */}
             {txHash && (
               <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
@@ -1007,7 +999,7 @@ export default function BridgePage() {
                 </a>
               </div>
             )}
-            
+
             {txError && (
               <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
                 <div className="text-sm text-red-400">Transaction Error</div>

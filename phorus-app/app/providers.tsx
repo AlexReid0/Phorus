@@ -10,9 +10,9 @@ import { useState } from 'react'
 
 // Get project ID from environment variable
 // Reown AppKit uses NEXT_PUBLIC_PROJECT_ID or NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-const projectId = process.env.NEXT_PUBLIC_PROJECT_ID || 
-                  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 
-                  ''
+const projectId = process.env.NEXT_PUBLIC_PROJECT_ID ||
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
+  ''
 
 // Define Hyperliquid as a custom chain
 const hyperliquid = defineChain({

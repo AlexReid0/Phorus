@@ -160,7 +160,7 @@ export async function getQuote(params: {
       return null
     }
 
-    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] || 
+    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] ||
       TOKEN_ADDRESSES['ethereum']?.[params.fromToken]
     const toTokenAddress = TOKEN_ADDRESSES[params.toChain]?.[params.toToken] ||
       TOKEN_ADDRESSES['ethereum']?.[params.toToken]
@@ -186,7 +186,7 @@ export async function getQuote(params: {
     url.searchParams.set('slippage', slippage.toString())
 
     const response = await fetch(url.toString())
-    
+
     if (!response.ok) {
       const error = await response.text()
       console.error('LiFi API error:', error)
@@ -223,7 +223,7 @@ export async function getRoutes(params: {
       return null
     }
 
-    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] || 
+    const fromTokenAddress = TOKEN_ADDRESSES[params.fromChain]?.[params.fromToken] ||
       TOKEN_ADDRESSES['ethereum']?.[params.fromToken]
     const toTokenAddress = TOKEN_ADDRESSES[params.toChain]?.[params.toToken] ||
       TOKEN_ADDRESSES['ethereum']?.[params.toToken]
@@ -282,7 +282,7 @@ export async function getStatus(txHash: string, fromChain?: number, toChain?: nu
     if (toChain) url.searchParams.set('toChain', toChain.toString())
 
     const response = await fetch(url.toString())
-    
+
     if (!response.ok) {
       return null
     }
