@@ -244,10 +244,23 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
     return '0x0000000000000000000000000000000000000000'
   }
 
-  // For Hyperliquid, skip TOKEN_ADDRESSES lookup - always query LiFi API
-  // The generated addresses file has invalid addresses for Hyperliquid
+  // For Hyperliquid, check TOKEN_ADDRESSES first for known tokens (like USDC perps)
+  // Then fall back to LiFi API lookup for other tokens
   if (chainId === 'hpl' || chainId === 'hyperliquid' || chainId === '1337') {
-    return null // Return null to force LiFi API lookup
+    const tokenAddressKey = getTokenAddressKey(chainId)
+    const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
+    
+    // Check if we have the token in TOKEN_ADDRESSES (e.g., USDC (perps))
+    if (chainTokens?.[symbol]) {
+      const address = chainTokens[symbol]
+      // Only use if it's a valid address (not a placeholder)
+      if (address && !address.match(/0{20,}$/) && address !== '0x0000000000000000000000000000000000000000') {
+        return address
+      }
+    }
+    
+    // For other Hyperliquid tokens, return null to force LiFi API lookup
+    return null
   }
 
   // Map chain ID to TOKEN_ADDRESSES key
@@ -470,6 +483,12 @@ export async function getRoutes(params: {
     // Look up token addresses using helper function
     let fromTokenAddress = findTokenAddress(params.fromToken, params.fromChain)
     let toTokenAddress = findTokenAddress(params.toToken, params.toChain)
+
+    // Special case: For "USDC (perps)" on Hyperliquid, use the known address directly
+    if (toChainId === 1337 && params.toToken === 'USDC (perps)') {
+      toTokenAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
+      console.log(`Using known address for USDC (perps) on Hyperliquid:`, toTokenAddress)
+    }
 
     // For Hyperliquid tokens, ALWAYS try querying LiFi API if not found in TOKEN_ADDRESSES
     if (!toTokenAddress && toChainId === 1337) {

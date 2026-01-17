@@ -128,9 +128,6 @@ export default function BridgePage() {
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [routes, setRoutes] = useState<any>(null) // Store routes for messaging flow
   const [selectedRoute, setSelectedRoute] = useState<any>(null) // Selected route
-  const [selectedStep, setSelectedStep] = useState<any>(null) // Selected step from route
-  const [currentStepIndex, setCurrentStepIndex] = useState<number>(0) // Track which step we're on
-  const [executingSteps, setExecutingSteps] = useState<boolean>(false) // Track if we're executing multi-step route
   const [dismissedTxHashes, setDismissedTxHashes] = useState<Set<string>>(new Set())
 
   // Transaction state
@@ -177,107 +174,6 @@ export default function BridgePage() {
   // Track the transaction hash that we're showing success for
   const [successTxHash, setSuccessTxHash] = useState<string | null>(null)
 
-  // Handle multi-step execution: after bridge transaction is confirmed, proceed to messaging step
-  useEffect(() => {
-    console.log('[useEffect: multi-step] Checking conditions', {
-      isConfirmed,
-      txHash,
-      hasSelectedRoute: !!selectedRoute,
-      executingSteps,
-      currentStepIndex,
-      totalSteps: selectedRoute?.steps?.length,
-      condition: isConfirmed && txHash && selectedRoute && executingSteps && currentStepIndex < selectedRoute.steps.length - 1,
-    })
-
-    if (isConfirmed && txHash && selectedRoute && executingSteps && currentStepIndex < selectedRoute.steps.length - 1) {
-      console.log('[useEffect: multi-step] Conditions met, proceeding to next step')
-      // Bridge transaction confirmed, now proceed to next step (messaging)
-      const nextStepIndex = currentStepIndex + 1
-      const nextStep = selectedRoute.steps[nextStepIndex]
-
-      console.log('[useEffect: multi-step] Next step:', {
-        nextStepIndex,
-        hasNextStep: !!nextStep,
-        stepTool: nextStep?.tool,
-        stepType: nextStep?.type,
-      })
-
-      if (nextStep) {
-        // Get transaction data for the next step
-        console.log('[useEffect: multi-step] Fetching transaction data for next step')
-        getStepTransaction(nextStep).then((stepWithTx) => {
-          console.log('[useEffect: multi-step] Got step transaction data:', {
-            type: stepWithTx.type,
-            tool: stepWithTx.tool,
-            hasMessage: !!stepWithTx.message,
-          })
-
-          const isMessagingStep = stepWithTx.type === 'message' ||
-            stepWithTx.tool === 'hyperliquidSA' ||
-            stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
-            stepWithTx.message
-
-          console.log('[useEffect: multi-step] Step type check:', {
-            isMessagingStep,
-            hasMessage: !!stepWithTx.message,
-          })
-
-          if (isMessagingStep && stepWithTx.message) {
-            console.log('[useEffect: multi-step] Executing messaging step')
-            // Execute messaging step
-            setCurrentStepIndex(nextStepIndex)
-            setSelectedStep(nextStep)
-
-            // Sign and relay the message
-            console.log('[useEffect: multi-step] Signing typed data for messaging step')
-            signTypedDataAsync({
-              domain: stepWithTx.message.domain,
-              types: stepWithTx.message.types,
-              primaryType: stepWithTx.message.primaryType,
-              message: stepWithTx.message.message,
-            }).then((signature) => {
-              console.log('[useEffect: multi-step] Message signed, relaying...')
-              return relayMessage(nextStep, signature)
-            }).then((relayResult) => {
-              console.log('[useEffect: multi-step] Messaging step completed:', relayResult)
-              // All steps completed
-              setExecutingSteps(false)
-              setCurrentStepIndex(0)
-
-              // Show success
-              setSuccessDetails({
-                fromToken: fromToken.symbol,
-                toChain: toChain.name,
-              })
-              setSuccessTxHash(txHash) // Use the bridge txHash for tracking
-              console.log('[useEffect: multi-step] Success state set, all steps complete')
-            }).catch((error) => {
-              console.error('[useEffect: multi-step] Error executing messaging step:', error)
-              setQuoteError(error?.message || 'Failed to execute messaging step')
-              setExecutingSteps(false)
-              setCurrentStepIndex(0)
-            })
-          } else {
-            // Not a messaging step, might be another transaction
-            console.warn('[useEffect: multi-step] Next step is not a messaging step:', stepWithTx)
-            setExecutingSteps(false)
-            setCurrentStepIndex(0)
-          }
-        }).catch((error) => {
-          console.error('[useEffect: multi-step] Error getting next step transaction:', error)
-          setQuoteError(error?.message || 'Failed to get next step')
-          setExecutingSteps(false)
-          setCurrentStepIndex(0)
-        })
-      } else {
-        console.warn('[useEffect: multi-step] No next step found')
-      }
-    } else {
-      if (isConfirmed && txHash && !executingSteps) {
-        console.log('[useEffect: multi-step] Transaction confirmed but not in multi-step mode (single-step route)')
-      }
-    }
-  }, [isConfirmed, txHash, selectedRoute, executingSteps, currentStepIndex, signTypedDataAsync, fromToken.symbol, toChain.name])
 
   // Track when txHash is set (transaction submitted)
   const prevTxHash = useRef<string | undefined>(undefined)
@@ -288,12 +184,10 @@ export default function BridgePage() {
         prevTxHash: prevTxHash.current,
         isPendingTx,
         isConfirming,
-        executingSteps,
-        currentStepIndex,
       })
       prevTxHash.current = txHash
     }
-  }, [txHash, isPendingTx, isConfirming, executingSteps, currentStepIndex])
+  }, [txHash, isPendingTx, isConfirming])
 
   // Log transaction state changes
   useEffect(() => {
@@ -302,14 +196,12 @@ export default function BridgePage() {
       isPendingTx,
       isConfirming,
       isConfirmed,
-      executingSteps,
-      currentStepIndex,
       successTxHash,
       isDismissed: txHash ? dismissedTxHashes.has(txHash) : false,
       selectedRoute: !!selectedRoute,
       routeSteps: selectedRoute?.steps?.length,
     })
-  }, [txHash, isPendingTx, isConfirming, isConfirmed, executingSteps, currentStepIndex, successTxHash, dismissedTxHashes, selectedRoute])
+  }, [txHash, isPendingTx, isConfirming, isConfirmed, successTxHash, dismissedTxHashes, selectedRoute])
 
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
@@ -318,11 +210,10 @@ export default function BridgePage() {
       txHash,
       successTxHash,
       isDismissed: dismissedTxHashes.has(txHash || ''),
-      executingSteps,
-      condition: isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash) && !executingSteps,
+      condition: isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash),
     })
 
-    if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash) && !executingSteps) {
+    if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash)) {
       console.log('[useEffect: success] Conditions met, setting success state and scheduling reset')
       // Store details before resetting
       setSuccessDetails({
@@ -341,15 +232,13 @@ export default function BridgePage() {
         setChainMismatch(false)
         setSuccessDetails(null)
         setSuccessTxHash(null)
-        setCurrentStepIndex(0)
-        setExecutingSteps(false)
         // Mark this txHash as dismissed so it won't show again
         setDismissedTxHashes(prev => new Set(prev).add(txHash))
       }, 5000) // Show popup for 5 seconds
 
       return () => clearTimeout(timer)
     }
-  }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes, executingSteps])
+  }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes])
 
   // Clear success state when starting a new transaction (form parameters change)
   useEffect(() => {
@@ -429,7 +318,6 @@ export default function BridgePage() {
       setQuoteError(null)
       setRoutes(null)
       setSelectedRoute(null)
-      setSelectedStep(null)
 
       try {
         // Validate and normalize the Hyperliquid address if provided
@@ -447,34 +335,45 @@ export default function BridgePage() {
           }
         }
 
-        // Only use Hyperliquid direct flow when NOT using advanced bridge (showCustomToField)
-        const isHyperliquidDirect = (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && normalizedHyperliquidAddress && !showCustomToField
+        // For Hyperliquid, always use routes API (both direct mode and advanced mode)
+        const isHyperliquid = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+        const isHyperliquidDirect = isHyperliquid && normalizedHyperliquidAddress && !showCustomToField
+        const isHyperliquidAdvanced = isHyperliquid && showCustomToField
         let gotQuoteFromRoutes = false // Track if we got a quote from routes
 
-        // For Hyperliquid transfers, route through Arbitrum first, then bridge into HyperCore
-        // Hyperliquid deposits work by: Source Chain → Arbitrum → HyperCore
-        // LiFi will handle the multi-step route automatically
-        if (isHyperliquidDirect) {
-          // Route to Arbitrum first, then LiFi will bridge to HyperCore
-          // The toAddress should be the Hyperliquid core account address for the final step
+        // For Hyperliquid transfers (both direct and advanced mode), use advanced routes API
+        // Direct mode defaults to perps USDC on HyperCore
+        if (isHyperliquidDirect || isHyperliquidAdvanced) {
+          // Use the same routing as advanced mode
+          // LiFi will handle the multi-step route automatically
           try {
+            // For direct mode, default to USDC (perps); for advanced mode, use selected token
+            const targetToToken = isHyperliquidDirect 
+              ? (toToken.symbol === 'USDC (perps)' ? toToken.symbol : 'USDC (perps)')
+              : toToken.symbol
+            
+            // For advanced mode, use the connected wallet address; for direct mode, use the entered Hyperliquid address
+            const targetToAddress = isHyperliquidDirect 
+              ? normalizedHyperliquidAddress!
+              : address
+            
             const routesData = await getRoutes({
               fromChain: fromChain.id,
-              toChain: 'arb', // Route to Arbitrum first (Hyperliquid deposits go through Arbitrum)
+              toChain: toChain.id, // Route directly to Hyperliquid (same as advanced mode)
               fromToken: fromToken.symbol,
-              toToken: 'USDC', // Use USDC (will be on Arbitrum, then bridged to HyperCore)
+              toToken: targetToToken,
               fromAmount: amount,
               fromAddress: address,
-              toAddress: normalizedHyperliquidAddress!, // Hyperliquid core account address for final deposit
+              toAddress: targetToAddress,
               slippage: 0.03,
             })
 
             if (routesData && routesData.routes && routesData.routes.length > 0) {
-              console.log('Found routes to Arbitrum (will bridge to HyperCore):', routesData.routes.length, 'routes')
+              console.log('Found routes to Hyperliquid:', routesData.routes.length, 'routes')
               setRoutes(routesData)
 
-              // Find the best route - prefer routes that can bridge to Hyperliquid
-              // Look for routes with Hyperliquid steps or routes that end on Arbitrum (we'll bridge from there)
+              // Find the best route - prefer routes that bridge directly to Hyperliquid
+              // Look for routes with Hyperliquid steps (direct bridge to HyperCore)
               let bestRoute = routesData.routes.find((route: any) => {
                 // Prefer routes with Hyperliquid steps (direct bridge to HyperCore)
                 if (route.steps.some((step: any) =>
@@ -484,9 +383,9 @@ export default function BridgePage() {
                 )) {
                   return true
                 }
-                // Or routes that end on Arbitrum (chain ID 42161)
+                // Also check if route ends on Hyperliquid
                 const lastStep = route.steps[route.steps.length - 1]
-                if (lastStep && lastStep.action?.toChainId === 42161) {
+                if (lastStep && (lastStep.action?.toChainId === 1337 || route.toChainId === 1337)) {
                   return true
                 }
                 return false
@@ -507,15 +406,13 @@ export default function BridgePage() {
 
               if (bestRoute && bestRoute.steps && bestRoute.steps.length > 0) {
                 setSelectedRoute(bestRoute)
-                setCurrentStepIndex(0) // Start with first step
                 const firstStep = bestRoute.steps[0]
-                setSelectedStep(firstStep)
 
-                // Check if this route ends on Arbitrum and needs a second step to Hyperliquid
+                // Check if this route ends on Hyperliquid
                 const lastStep = bestRoute.steps[bestRoute.steps.length - 1]
                 // Check route's final destination chain ID
                 const routeToChainId = bestRoute.toChainId
-                const endsOnArbitrum = routeToChainId === 42161 // Arbitrum chain ID
+                const endsOnHyperliquid = routeToChainId === 1337 // Hyperliquid chain ID
                 const hasHyperliquidStep = bestRoute.steps.some((step: any) =>
                   step.action?.toChainId === 1337 ||
                   step.tool === 'hyperliquidSA' ||
@@ -523,9 +420,8 @@ export default function BridgePage() {
                   (step as any).toChainId === 1337
                 )
 
-                // If route ends on Arbitrum but doesn't have Hyperliquid step, we need to add it
-                // For now, we'll use the route as-is and let the user complete the deposit manually
-                // OR LiFi might handle it automatically if we pass the Hyperliquid address
+                // Route should end on Hyperliquid when using direct mode
+                // LiFi will handle the routing automatically
 
                 // Get transaction data for the first step
                 try {
@@ -537,41 +433,135 @@ export default function BridgePage() {
                     stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
                     stepWithTx.message
 
+                  // Ensure the quote structure matches QuoteResponse format for approval handling
+                  // The stepWithTx from getStepTransaction should have action and estimate at top level
+                  // But we'll ensure they're there by checking stepWithTx first, then firstStep as fallback
+                  const stepAction = stepWithTx.action || firstStep.action
+                  const quoteEstimate = stepWithTx.estimate || firstStep.estimate
+                  
+                  // Ensure action.fromToken.address is set (needed for handleApproval)
+                  // Look up token address if not present in step action
+                  let fromTokenAddress = stepAction?.fromToken?.address
+                  if (!fromTokenAddress && fromToken.symbol !== 'ETH') {
+                    // Look up token address from TOKEN_ADDRESSES
+                    const chainTokens = TOKEN_ADDRESSES[fromChain.id] || TOKEN_ADDRESSES['ethereum']
+                    fromTokenAddress = chainTokens?.[fromToken.symbol]
+                  }
+                  
+                  // Build complete action object with all required fields
+                  const quoteAction = {
+                    ...stepAction,
+                    fromToken: {
+                      ...stepAction?.fromToken,
+                      address: fromTokenAddress || stepAction?.fromToken?.address || (fromToken.symbol === 'ETH' ? '0x0000000000000000000000000000000000000000' : ''),
+                      symbol: fromToken.symbol,
+                      decimals: stepAction?.fromToken?.decimals || (fromToken.symbol === 'ETH' ? 18 : 6),
+                    },
+                    toToken: {
+                      ...stepAction?.toToken,
+                      symbol: toToken.symbol,
+                      decimals: stepAction?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6),
+                    },
+                  }
+                  
+                  // Check for approval address in multiple possible locations
+                  // Priority: stepWithTx.estimate (from getStepTransaction) > firstStep.estimate (from routes)
+                  // Also check includedSteps for approval transactions
+                  let approvalAddress = stepWithTx.estimate?.approvalAddress || 
+                                         firstStep.estimate?.approvalAddress ||
+                                         quoteEstimate?.approvalAddress
+                  
+                  // If not found in estimate, check includedSteps for approval step
+                  if (!approvalAddress && (firstStep as any).includedSteps) {
+                    for (const includedStep of (firstStep as any).includedSteps) {
+                      if (includedStep.estimate?.approvalAddress) {
+                        approvalAddress = includedStep.estimate.approvalAddress
+                        break
+                      }
+                    }
+                  }
+                  
+                  // Also check stepWithTx.includedSteps
+                  if (!approvalAddress && (stepWithTx as any).includedSteps) {
+                    for (const includedStep of (stepWithTx as any).includedSteps) {
+                      if (includedStep.estimate?.approvalAddress) {
+                        approvalAddress = includedStep.estimate.approvalAddress
+                        break
+                      }
+                    }
+                  }
+                  
+                  // Debug logging to help diagnose approval issues
+                  console.log('[Routes] Approval check:', {
+                    hasStepWithTxEstimate: !!stepWithTx.estimate,
+                    stepWithTxApprovalAddress: stepWithTx.estimate?.approvalAddress,
+                    hasFirstStepEstimate: !!firstStep.estimate,
+                    firstStepApprovalAddress: firstStep.estimate?.approvalAddress,
+                    quoteEstimateApprovalAddress: quoteEstimate?.approvalAddress,
+                    finalApprovalAddress: approvalAddress,
+                    fromToken: fromToken.symbol,
+                    fromTokenAddress: fromTokenAddress,
+                    hasActionFromTokenAddress: !!quoteAction.fromToken.address,
+                    willNeedApproval: approvalAddress && fromToken.symbol !== 'ETH',
+                  })
+                  
                   if (isMessagingStep) {
                     // For messaging steps (intent-based), use the step data directly
-                    setQuote({
+                    const quoteData = {
                       ...stepWithTx,
+                      // Ensure action and estimate are at the top level (same as getQuote response)
+                      action: quoteAction,
+                      estimate: {
+                        ...quoteEstimate,
+                        // Explicitly set approvalAddress - ensure it's always in the quote
+                        approvalAddress: approvalAddress,
+                      },
                       isMessaging: true,
                       route: bestRoute,
                       step: firstStep,
                       stepIndex: 0,
                       totalSteps: bestRoute.steps.length,
-                      needsHyperliquidDeposit: endsOnArbitrum && !hasHyperliquidStep,
-                    })
-                    // Set approval state immediately based on stepWithTx data
-                    if (stepWithTx.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
-                      setNeedsApproval(true)
-                    } else {
-                      setNeedsApproval(false)
                     }
+                    setQuote(quoteData)
+                    // Set approval state immediately - check approvalAddress we found
+                    // Also verify it's actually in the quote object we just set
+                    const hasApproval = approvalAddress && fromToken.symbol !== 'ETH' && quoteData.estimate?.approvalAddress
+                    console.log('[Routes] Setting approval state:', {
+                      approvalAddress,
+                      fromToken: fromToken.symbol,
+                      hasApproval,
+                      quoteEstimateApprovalAddress: quoteData.estimate?.approvalAddress,
+                    })
+                    setNeedsApproval(!!hasApproval)
                     gotQuoteFromRoutes = true
                   } else if (stepWithTx.transactionRequest) {
                     // For regular transaction steps (one-step bridge), use transactionRequest
-                    setQuote({
+                    const quoteData = {
                       ...stepWithTx,
+                      // Ensure action and estimate are at the top level (same as getQuote response)
+                      action: quoteAction,
+                      estimate: {
+                        ...quoteEstimate,
+                        // Explicitly set approvalAddress - ensure it's always in the quote
+                        approvalAddress: approvalAddress,
+                      },
                       isMessaging: false,
                       route: bestRoute,
                       step: firstStep,
                       stepIndex: 0,
                       totalSteps: bestRoute.steps.length,
-                      needsHyperliquidDeposit: endsOnArbitrum && !hasHyperliquidStep,
-                    })
-                    // Set approval state immediately based on stepWithTx data
-                    if (stepWithTx.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
-                      setNeedsApproval(true)
-                    } else {
-                      setNeedsApproval(false)
                     }
+                    setQuote(quoteData)
+                    // Set approval state immediately - check approvalAddress we found
+                    // Also verify it's actually in the quote object we just set
+                    const hasApproval = approvalAddress && fromToken.symbol !== 'ETH' && quoteData.estimate?.approvalAddress
+                    console.log('[Routes] Setting approval state:', {
+                      approvalAddress,
+                      fromToken: fromToken.symbol,
+                      hasApproval,
+                      quoteEstimateApprovalAddress: quoteData.estimate?.approvalAddress,
+                    })
+                    setNeedsApproval(!!hasApproval)
                     gotQuoteFromRoutes = true
                   } else {
                     // Fallback to simple quote
@@ -696,9 +686,18 @@ export default function BridgePage() {
             setNeedsApproval(false)
           }
         } else {
-          // Quote was set from routes - check if approval is needed
-          if (quote && quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
-            setNeedsApproval(true)
+          // Quote was set from routes - re-check if approval is needed
+          // This is a fallback in case the state didn't update correctly
+          if (quote) {
+            const needsApprovalCheck = quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH'
+            console.log('[Routes Fallback] Re-checking approval:', {
+              hasQuote: !!quote,
+              hasEstimate: !!quote.estimate,
+              approvalAddress: quote.estimate?.approvalAddress,
+              fromToken: fromToken.symbol,
+              needsApproval: needsApprovalCheck,
+            })
+            setNeedsApproval(needsApprovalCheck)
           } else {
             setNeedsApproval(false)
           }
@@ -716,6 +715,26 @@ export default function BridgePage() {
     const timeoutId = setTimeout(fetchQuote, 500)
     return () => clearTimeout(timeoutId)
   }, [isConnected, address, fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress, showCustomToField])
+
+  // Re-check approval whenever quote changes (ensures approval state is always in sync)
+  useEffect(() => {
+    if (quote && fromToken) {
+      const needsApprovalCheck = quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH'
+      console.log('[Quote Effect] Re-checking approval on quote change:', {
+        hasQuote: !!quote,
+        hasEstimate: !!quote.estimate,
+        approvalAddress: quote.estimate?.approvalAddress,
+        fromToken: fromToken.symbol,
+        needsApproval: needsApprovalCheck,
+        currentNeedsApproval: needsApproval,
+      })
+      if (needsApproval !== needsApprovalCheck) {
+        setNeedsApproval(needsApprovalCheck)
+      }
+    } else if (!quote) {
+      setNeedsApproval(false)
+    }
+  }, [quote, fromToken])
 
   const handleSwapChains = () => {
     const temp = fromChain
@@ -753,8 +772,6 @@ export default function BridgePage() {
       quoteType: quote?.type,
       isMessaging: quote?.isMessaging,
       hasMessage: !!quote?.message,
-      executingSteps,
-      currentStepIndex,
       totalSteps: quote?.totalSteps,
       txHash,
       isConfirmed,
@@ -843,16 +860,8 @@ export default function BridgePage() {
         console.log('[handleBridge] Regular transaction flow', {
           isMultiStep,
           totalSteps: isMultiStep ? quote.route.steps.length : 1,
-          currentExecutingSteps: executingSteps,
-          currentStepIndex,
         })
 
-        // If multi-step, mark that we're executing steps
-        if (isMultiStep) {
-          console.log('[handleBridge] Setting executingSteps=true, currentStepIndex=0 for multi-step route')
-          setExecutingSteps(true)
-          setCurrentStepIndex(0)
-        }
 
         // Check if user is on the correct chain
         // The transaction should be on the fromChain, not any intermediate chain
@@ -883,8 +892,6 @@ export default function BridgePage() {
             txRequest: txRequest
           })
           if (isMultiStep) {
-            setExecutingSteps(false)
-            setCurrentStepIndex(0)
           }
           return // BLOCK the transaction
         }
@@ -917,15 +924,11 @@ export default function BridgePage() {
               console.error('Error switching chain:', switchError)
               setQuoteError(`Please manually switch to ${chainName} in your wallet`)
               if (isMultiStep) {
-                setExecutingSteps(false)
-                setCurrentStepIndex(0)
               }
               return
             }
           }
           if (isMultiStep) {
-            setExecutingSteps(false)
-            setCurrentStepIndex(0)
           }
           return
         }
@@ -940,8 +943,6 @@ export default function BridgePage() {
           gasLimit: txRequest.gasLimit,
           chainId: txRequest.chainId,
           isMultiStep,
-          executingSteps,
-          currentStepIndex,
         })
         // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
         sendTransaction({
@@ -2044,21 +2045,6 @@ export default function BridgePage() {
               </div>
             )}
 
-            {/* Multi-step progress indicator */}
-            {executingSteps && quote?.totalSteps && quote.totalSteps > 1 && (
-              <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
-                <div className="text-sm text-mint mb-2">
-                  Step {currentStepIndex + 1} of {quote.totalSteps}
-                </div>
-                <div className="text-xs text-gray-400">
-                  {currentStepIndex === 0 && isConfirmed
-                    ? 'Transaction confirmed. Funds arriving on HyperCore...'
-                    : currentStepIndex === 0
-                      ? 'Executing one-step route to HyperCore...'
-                      : 'Completing transfer to HyperCore account...'}
-                </div>
-              </div>
-            )}
 
             {/* Bridge Button */}
             {(() => {
@@ -2074,7 +2060,7 @@ export default function BridgePage() {
                 isApproving ||
                 isApprovalConfirming ||
                 isSwitchingChain ||
-                (executingSteps && currentStepIndex > 0 && isSigningMessage) ||
+                isSigningMessage ||
                 // Require Hyperliquid address when Hyperliquid is selected
                 (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
               const buttonText = !isMounted || !isConnected
@@ -2091,15 +2077,13 @@ export default function BridgePage() {
                         ? 'Approve Token First'
                         : isSwitchingChain
                           ? 'Switching Chain...'
-                          : executingSteps && currentStepIndex > 0 && isSigningMessage
+                          : isSigningMessage
                             ? 'Signing Message...'
-                            : executingSteps && currentStepIndex > 0
-                              ? 'Executing Messaging Step...'
-                              : isPendingTx || isConfirming
-                                ? isConfirming ? 'Confirming...' : 'Processing...'
-                                : isConfirmed && !executingSteps
-                                  ? 'Bridge Complete!'
-                                  : 'Bridge'
+                            : isPendingTx || isConfirming
+                              ? isConfirming ? 'Confirming...' : 'Processing...'
+                              : isConfirmed
+                                ? 'Bridge Complete!'
+                                : 'Bridge'
 
               console.log('[Button State]', {
                 buttonText,
@@ -2117,8 +2101,6 @@ export default function BridgePage() {
                 isApproving,
                 isApprovalConfirming,
                 isSwitchingChain,
-                executingSteps,
-                currentStepIndex,
                 isSigningMessage,
                 isConfirmed,
                 txHash,
