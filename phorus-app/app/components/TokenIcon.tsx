@@ -90,23 +90,10 @@ export default function TokenIcon({ symbol, size = 24, chainId }: TokenIconProps
             onError={() => setLogoError(true)}
           />
         ) : null}
-        {/* Fallback: show symbol/letter if no logo or logo failed */}
+        {/* Fallback: show first letter if no logo or logo failed */}
         {showFallback && (
           <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
-            {symbol === 'USDC' && '$'}
-            {symbol === 'USDT' && '₮'}
-            {symbol === 'ETH' && 'Ξ'}
-            {symbol === 'WBTC' && '₿'}
-            {symbol === 'DAI' && '◈'}
-            {symbol === 'USDC.e' && '$'}
-            {symbol === 'WETH' && 'Ξ'}
-            {symbol === 'ARB' && 'A'}
-            {symbol === 'OP' && 'O'}
-            {symbol === 'MATIC' && 'M'}
-            {symbol === 'LINK' && 'L'}
-            {symbol === 'UNI' && 'U'}
-            {symbol === 'AAVE' && 'A'}
-            {!['USDC', 'USDT', 'ETH', 'WBTC', 'DAI', 'USDC.e', 'WETH', 'ARB', 'OP', 'MATIC', 'LINK', 'UNI', 'AAVE'].includes(symbol) && symbol[0]}
+            {symbol[0]?.toUpperCase() || '?'}
           </div>
         )}
       </div>
