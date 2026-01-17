@@ -597,12 +597,11 @@ export async function getRoutes(params: {
  */
 export async function getStepTransaction(step: any): Promise<any> {
   try {
-    // Extract tool from step if available, otherwise use toolDetails
-    const tool = step.tool || step.toolDetails?.key || step.action?.tool
-    
-    if (!tool) {
-      console.error('Step missing tool property:', step)
-      throw new Error('Step is missing required tool property. Cannot fetch transaction data.')
+    // The API requires the full step object with all properties including includedSteps
+    // Ensure includedSteps is present (even if empty array) as it's required by the API
+    const stepWithIncludedSteps = {
+      ...step,
+      includedSteps: step.includedSteps || [],
     }
     
     const response = await fetch(`${LIFI_API_BASE}/advanced/stepTransaction`, {
@@ -610,10 +609,7 @@ export async function getStepTransaction(step: any): Promise<any> {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        tool,
-        step,
-      }),
+      body: JSON.stringify(stepWithIncludedSteps),
     })
 
     if (!response.ok) {
