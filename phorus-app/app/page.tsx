@@ -212,11 +212,16 @@ export default function BridgePage() {
   const [needsApproval, setNeedsApproval] = useState(false)
   const [chainMismatch, setChainMismatch] = useState(false)
   // Track the approval context (address and amount) to detect when a new approval is needed
+  // Also track the approval hash to verify it matches the current transaction
   const [approvalContext, setApprovalContext] = useState<{
     approvalAddress: string | null
     tokenAddress: string | null
     amount: string | null
+    approvalHash: string | null  // Track which approval hash is valid for this context
   } | null>(null)
+  
+  // Track previous quote to detect when a new quote is fetched
+  const previousQuoteRef = useRef<any>(null)
 
   useEffect(() => {
     setIsMounted(true)
@@ -286,8 +291,10 @@ export default function BridgePage() {
     setNeedsApproval(false)
     setChainMismatch(false)
     setLoadingQuote(false)
+    setApprovalContext(null) // Clear approval context so old approvals don't persist
     // Note: approvalHash and txHash are from wagmi hooks and will be cleared when new transactions start
     // We can't directly reset them, but they'll be replaced on next transaction
+    // By clearing approvalContext, we ensure the UI treats any existing approvalHash as invalid
   }, [])
 
   // Reset form when bridge is complete (but keep success details for popup)
@@ -324,6 +331,41 @@ export default function BridgePage() {
       setSuccessTxHash(null)
     }
   }, [fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress, successDetails, txHash, successTxHash])
+
+  // SIMPLE FIX: When quote changes, reset approval state
+  // This ensures each new transaction requires a fresh approval
+  useEffect(() => {
+    // If quote changed (new quote fetched), reset approval state
+    if (quote !== previousQuoteRef.current) {
+      console.log('[SIMPLE FIX] Quote changed - resetting approval state', {
+        hadPreviousQuote: !!previousQuoteRef.current,
+        hasNewQuote: !!quote,
+      })
+      
+      // Clear approval context - this makes any old approvalHash invalid
+      setApprovalContext(null)
+      
+      // Set needsApproval based on new quote
+      if (quote && fromToken) {
+        const needsApprovalCheck = quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH'
+        setNeedsApproval(needsApprovalCheck)
+        
+        // Initialize new approval context if needed
+        if (needsApprovalCheck) {
+          setApprovalContext({
+            approvalAddress: quote.estimate?.approvalAddress || null,
+            tokenAddress: quote.action?.fromToken?.address || null,
+            amount: quote.action?.fromAmount || null,
+            approvalHash: null,  // No hash yet - must approve
+          })
+        }
+      } else {
+        setNeedsApproval(false)
+      }
+      
+      previousQuoteRef.current = quote
+    }
+  }, [quote, fromToken])
 
   // Update token when chain changes to ensure token exists on new chain
   useEffect(() => {
@@ -407,6 +449,10 @@ export default function BridgePage() {
       setQuoteError(null)
       setRoutes(null)
       setSelectedRoute(null)
+      // HARDCODED: Clear approval state when fetching new quote
+      // This ensures approval is always required for new transactions
+      setApprovalContext(null)
+      setNeedsApproval(false)
 
       try {
         // Validate and normalize the Hyperliquid address if provided
@@ -888,6 +934,7 @@ export default function BridgePage() {
   }, [isConnected, address, fromChain, toChain, fromToken, toToken, amount, hyperliquidAddress, showCustomToField, successDetails])
 
   // Re-check approval whenever quote changes (ensures approval state is always in sync)
+  // Note: Transaction key effect already cleared context if it's a new transaction
   useEffect(() => {
     if (quote && fromToken) {
       const needsApprovalCheck = quote.estimate?.approvalAddress && fromToken.symbol !== 'ETH'
@@ -895,56 +942,61 @@ export default function BridgePage() {
       const currentTokenAddress = quote.action?.fromToken?.address
       const currentAmount = quote.action?.fromAmount
       
-      // Check if approval context has changed (new approval address, token, or amount)
-      const approvalContextChanged = approvalContext && (
-        approvalContext.approvalAddress !== currentApprovalAddress ||
-        approvalContext.tokenAddress !== currentTokenAddress ||
-        approvalContext.amount !== currentAmount
-      )
-      
-      // If approval context changed, we need a new approval (reset confirmation state)
-      if (approvalContextChanged && isApprovalConfirmed) {
-        console.log('[Quote Effect] Approval context changed, resetting approval confirmation', {
-          oldContext: approvalContext,
-          newContext: {
-            approvalAddress: currentApprovalAddress,
-            tokenAddress: currentTokenAddress,
-            amount: currentAmount,
-          }
+      // If approval is needed but we don't have context yet, initialize it
+      // (Transaction key effect already cleared old context if this is a new transaction)
+      if (needsApprovalCheck && !approvalContext) {
+        console.log('[Quote Effect] Initializing approval context for new quote', {
+          approvalAddress: currentApprovalAddress,
+          tokenAddress: currentTokenAddress,
+          amount: currentAmount,
         })
-        // Update the context so the UI treats it as unconfirmed
         setApprovalContext({
           approvalAddress: currentApprovalAddress || null,
           tokenAddress: currentTokenAddress || null,
           amount: currentAmount || null,
+          approvalHash: null,  // No hash yet - will be set when approval is submitted
         })
-      } else if (needsApprovalCheck && !approvalContext) {
-        // First time we see an approval requirement, set the context
-        setApprovalContext({
-          approvalAddress: currentApprovalAddress || null,
-          tokenAddress: currentTokenAddress || null,
-          amount: currentAmount || null,
-        })
+      } else if (approvalContext && needsApprovalCheck) {
+        // If we have context, verify it still matches the quote
+        // If it doesn't match, clear it (this handles edge cases)
+        const contextMatches = 
+          approvalContext.approvalAddress === currentApprovalAddress &&
+          approvalContext.tokenAddress === currentTokenAddress &&
+          approvalContext.amount === currentAmount
+        
+        if (!contextMatches) {
+          console.log('[Quote Effect] Approval context mismatch, clearing', {
+            oldContext: approvalContext,
+            newContext: {
+              approvalAddress: currentApprovalAddress,
+              tokenAddress: currentTokenAddress,
+              amount: currentAmount,
+            }
+          })
+          setApprovalContext({
+            approvalAddress: currentApprovalAddress || null,
+            tokenAddress: currentTokenAddress || null,
+            amount: currentAmount || null,
+            approvalHash: null,  // Clear hash since context changed
+          })
+        }
       }
       
-      console.log('[Quote Effect] Re-checking approval on quote change:', {
-        hasQuote: !!quote,
-        hasEstimate: !!quote.estimate,
-        approvalAddress: quote.estimate?.approvalAddress,
-        fromToken: fromToken.symbol,
-        needsApproval: needsApprovalCheck,
-        currentNeedsApproval: needsApproval,
-        approvalContextChanged,
-        isApprovalConfirmed,
-      })
+      // HARDCODED: Always update needsApproval state based on quote requirement
+      // This ensures approval is always required when quote needs it
       if (needsApproval !== needsApprovalCheck) {
+        console.log('[Quote Effect] HARDCODED: Setting needsApproval', {
+          needsApprovalCheck,
+          currentNeedsApproval: needsApproval,
+        })
         setNeedsApproval(needsApprovalCheck)
       }
     } else if (!quote) {
+      // No quote means no transaction, so no approval needed
       setNeedsApproval(false)
-      setApprovalContext(null)
+      // Don't clear context here - transaction key effect handles it
     }
-  }, [quote, fromToken, approvalContext, isApprovalConfirmed])
+  }, [quote, fromToken, approvalContext, needsApproval])
 
   const handleSwapChains = () => {
     const temp = fromChain
@@ -960,11 +1012,12 @@ export default function BridgePage() {
       const approvalAddress = quote.estimate.approvalAddress as `0x${string}`
       const amount = BigInt(quote.action.fromAmount)
 
-      // Update approval context when starting a new approval
+      // Update approval context when starting a new approval (hash will be set when transaction is submitted)
       setApprovalContext({
         approvalAddress,
         tokenAddress,
         amount: quote.action.fromAmount,
+        approvalHash: null,  // Will be updated when approvalHash is set
       })
 
       writeApproval({
@@ -978,6 +1031,32 @@ export default function BridgePage() {
       setQuoteError(error?.message || 'Failed to approve token')
     }
   }
+
+  // Update approval context with hash when approval transaction is submitted
+  // Only update if context matches current quote (safety check)
+  useEffect(() => {
+    if (approvalHash && approvalContext && !approvalContext.approvalHash) {
+      // Verify context matches current quote before associating hash
+      const contextMatches = quote &&
+        approvalContext.approvalAddress === quote.estimate?.approvalAddress &&
+        approvalContext.tokenAddress === quote.action?.fromToken?.address &&
+        approvalContext.amount === quote.action?.fromAmount
+      
+      if (contextMatches) {
+        console.log('[useEffect: approvalHash] Updating approval context with hash', { approvalHash })
+        setApprovalContext({
+          ...approvalContext,
+          approvalHash,
+        })
+      } else {
+        console.log('[useEffect: approvalHash] Hash received but context doesn\'t match quote - ignoring', {
+          approvalHash,
+          context: approvalContext,
+          quoteApprovalAddress: quote?.estimate?.approvalAddress,
+        })
+      }
+    }
+  }, [approvalHash, approvalContext, quote])
 
   const handleBridge = async () => {
     console.log('[handleBridge] Called', {
@@ -1008,21 +1087,27 @@ export default function BridgePage() {
       return
     }
 
-    // If approval is needed, check if it's confirmed AND matches current quote context
-    const approvalMatches = approvalContext &&
+    // If approval is needed, check if it's confirmed AND matches current quote context AND hash
+    // This is a strict check - ALL conditions must be true
+    const hasValidApproval = approvalContext &&
       approvalContext.approvalAddress === quote.estimate?.approvalAddress &&
       approvalContext.tokenAddress === quote.action?.fromToken?.address &&
-      approvalContext.amount === quote.action?.fromAmount
+      approvalContext.amount === quote.action?.fromAmount &&
+      approvalContext.approvalHash === approvalHash &&  // Hash must match
+      isApprovalConfirmed  // Must be confirmed
     
-    if (needsApproval && quote.estimate?.approvalAddress && (!isApprovalConfirmed || !approvalMatches)) {
-      console.log('[handleBridge] Early return: approval needed but not confirmed or context mismatch', {
+    if (needsApproval && quote.estimate?.approvalAddress && !hasValidApproval) {
+      console.log('[handleBridge] Early return: approval needed but not valid', {
         needsApproval,
         isApprovalConfirmed,
-        approvalMatches,
+        hasValidApproval,
         approvalContext,
+        approvalHash,
+        contextHash: approvalContext?.approvalHash,
         currentApprovalAddress: quote.estimate?.approvalAddress,
         currentTokenAddress: quote.action?.fromToken?.address,
         currentAmount: quote.action?.fromAmount,
+        hashMatches: approvalContext?.approvalHash === approvalHash,
       })
       setQuoteError('Please approve the token first')
       return
@@ -1204,7 +1289,16 @@ export default function BridgePage() {
   // Format output amount from quote
   const getOutputAmount = () => {
     if (quote?.estimate?.toAmount) {
-      const decimals = toToken.symbol === 'ETH' ? 18 : 6
+      // When advanced bridge is off, always use USDC decimals (6)
+      // When advanced bridge is on, use the actual toToken decimals
+      let decimals: number
+      if (!showCustomToField) {
+        // Advanced bridge is off - always USDC
+        decimals = 6
+      } else {
+        // Advanced bridge is on - use toToken decimals
+        decimals = quote.action?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6)
+      }
       return formatUnits(BigInt(quote.estimate.toAmount), decimals)
     }
     if (amount) {
@@ -2191,7 +2285,7 @@ export default function BridgePage() {
                       <span className="text-sm text-red-400">{quoteError}</span>
                     ) : (
                       <>
-                        {getOutputAmount()} {toToken.symbol.replace(' (perps)', '')}
+                        {getOutputAmount()} {!showCustomToField ? 'USDC' : toToken.symbol.replace(' (perps)', '')}
                       </>
                     )}
                   </span>
@@ -2251,18 +2345,43 @@ export default function BridgePage() {
               )}
             </div>
 
-            {/* Approval Button (if needed) - show until approval is confirmed */}
-            {/* Check if approval context matches current quote - if not, treat as unconfirmed */}
+            {/* Approval Button - HARDCODED: Always show when approval is needed and not fully confirmed */}
             {needsApproval &&
               quote?.estimate.approvalAddress &&
-              (!isApprovalConfirmed || 
-               !approvalContext ||
-               approvalContext.approvalAddress !== quote.estimate.approvalAddress ||
-               approvalContext.tokenAddress !== quote.action?.fromToken?.address ||
-               approvalContext.amount !== quote.action?.fromAmount) &&
               isConnected &&
               quote &&
-              !loadingQuote && (
+              !loadingQuote &&
+              (() => {
+                // HARDCODED: Show approval button unless ALL of these are true:
+                // 1. Approval is confirmed
+                // 2. We have approval context
+                // 3. Context matches current quote exactly
+                // 4. Hash matches context
+                const hasFullyValidApproval = 
+                  isApprovalConfirmed &&
+                  approvalContext &&
+                  approvalContext.approvalAddress === quote.estimate.approvalAddress &&
+                  approvalContext.tokenAddress === quote.action?.fromToken?.address &&
+                  approvalContext.amount === quote.action?.fromAmount &&
+                  approvalContext.approvalHash === approvalHash &&
+                  approvalContext.approvalHash !== null  // Hash must exist
+                
+                if (!hasFullyValidApproval) {
+                  console.log('[Approval Button] Showing - approval not fully valid', {
+                    isApprovalConfirmed,
+                    hasContext: !!approvalContext,
+                    contextMatches: approvalContext ? (
+                      approvalContext.approvalAddress === quote.estimate.approvalAddress &&
+                      approvalContext.tokenAddress === quote.action?.fromToken?.address &&
+                      approvalContext.amount === quote.action?.fromAmount
+                    ) : false,
+                    hashMatches: approvalContext?.approvalHash === approvalHash,
+                    hasHash: approvalContext?.approvalHash !== null,
+                  })
+                }
+                
+                return !hasFullyValidApproval
+              })() && (
                 <button
                   onClick={handleApproval}
                   disabled={isApproving || isApprovalConfirming}
@@ -2313,8 +2432,34 @@ export default function BridgePage() {
             )}
 
 
-            {/* Bridge Button - Only show when approval is not needed or has been confirmed */}
-            {(!needsApproval || isApprovalConfirmed) && (() => {
+            {/* Bridge Button - Only show when approval is not needed or has been confirmed with matching hash */}
+            {(!needsApproval || (() => {
+              // Strict check: approval must be confirmed AND match current context (including hash)
+              if (!isApprovalConfirmed) {
+                console.log('[Bridge Button] Approval not confirmed')
+                return false
+              }
+              if (!approvalContext || !approvalHash) {
+                console.log('[Bridge Button] Missing approval context or hash', { hasContext: !!approvalContext, hasHash: !!approvalHash })
+                return false
+              }
+              const matches = approvalContext.approvalAddress === quote?.estimate?.approvalAddress &&
+                             approvalContext.tokenAddress === quote?.action?.fromToken?.address &&
+                             approvalContext.amount === quote?.action?.fromAmount &&
+                             approvalContext.approvalHash === approvalHash
+              if (!matches) {
+                console.log('[Bridge Button] Approval context/hash mismatch', {
+                  contextAddress: approvalContext.approvalAddress,
+                  quoteAddress: quote?.estimate?.approvalAddress,
+                  contextHash: approvalContext.approvalHash,
+                  currentHash: approvalHash,
+                })
+              }
+              return matches
+            })()) && (() => {
+              // Keep button disabled if there's an active transaction that hasn't been confirmed
+              const hasActiveTransaction = txHash && !isConfirmed && !successDetails && !dismissedTxHashes.has(txHash)
+              
               const buttonDisabled = !isConnected ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
@@ -2327,8 +2472,10 @@ export default function BridgePage() {
                 isApprovalConfirming ||
                 isSwitchingChain ||
                 isSigningMessage ||
+                hasActiveTransaction ||  // Disable if transaction is active
                 // Require Hyperliquid address when Hyperliquid is selected
                 (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
+              
               const buttonText = !isMounted || !isConnected
                 ? 'Connect Wallet to Bridge'
                 : loadingQuote
@@ -2343,8 +2490,8 @@ export default function BridgePage() {
                         ? 'Switching Chain...'
                         : isSigningMessage
                           ? 'Signing Message...'
-                          : isPendingTx || isConfirming
-                            ? isConfirming ? 'Confirming...' : 'Processing...'
+                          : hasActiveTransaction || isPendingTx || isConfirming
+                            ? isConfirming ? 'Confirming...' : (hasActiveTransaction ? 'Processing...' : 'Processing...')
                             : isConfirmed
                               ? 'Bridge Complete!'
                               : 'Bridge'
@@ -2383,21 +2530,36 @@ export default function BridgePage() {
             })()}
 
             {/* Approval Transaction Status - Hide when success popup is showing */}
-            {approvalHash && !successDetails && (
-              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
-                <div className="text-sm text-yellow-400 mb-2">
-                  {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
+            {/* Only show if approval hash matches current approval context and approval is actually needed */}
+            {approvalHash && !successDetails && needsApproval && (() => {
+              // Check if approval context matches current quote AND hash matches
+              const approvalMatches = approvalContext &&
+                approvalContext.approvalAddress === quote?.estimate?.approvalAddress &&
+                approvalContext.tokenAddress === quote?.action?.fromToken?.address &&
+                approvalContext.amount === quote?.action?.fromAmount &&
+                approvalContext.approvalHash === approvalHash  // Hash must match
+              
+              // Only show if we have a matching approval context and hash
+              if (!approvalMatches) {
+                return null
+              }
+              
+              return (
+                <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                  <div className="text-sm text-yellow-400 mb-2">
+                    {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
+                  </div>
+                  <a
+                    href={`${chain?.blockExplorers?.default?.url}/tx/${approvalHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-yellow-400 hover:text-yellow-300 underline break-all"
+                  >
+                    {approvalHash}
+                  </a>
                 </div>
-                <a
-                  href={`${chain?.blockExplorers?.default?.url}/tx/${approvalHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-yellow-400 hover:text-yellow-300 underline break-all"
-                >
-                  {approvalHash}
-                </a>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Transaction Status - Hide when success popup is showing */}
             {txHash && !successDetails && (
@@ -2432,16 +2594,9 @@ export default function BridgePage() {
                 {/* Close button */}
                 <button
                   onClick={() => {
-                    console.log('[Success Popup] Closing popup and resetting form')
-                    // Mark this txHash as dismissed immediately to prevent popup from reappearing
-                    if (txHash) {
-                      setDismissedTxHashes(prev => new Set(prev).add(txHash))
-                    }
-                    // Clear success state
-                    setSuccessDetails(null)
-                    setSuccessTxHash(null)
-                    // Reset form completely when user closes popup
-                    resetForm()
+                    console.log('[Success Popup] Closing popup and refreshing page')
+                    // Refresh the entire page to reset all state
+                    window.location.reload()
                   }}
                   className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
                 >
