@@ -34,8 +34,8 @@ export const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
     ETH: '0x0000000000000000000000000000000000000000',
   },
   hyperliquid: {
-    USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // Native USDC on Hyperliquid
-    USDT: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC is the native token
+    USDC: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', // Native USDC on Hyperliquid (HyperEVM)
+    USDT: '0xb88339CB7199b77E23DB6E890353E22632Ba630f', // USDT may use same contract or need verification
     ETH: '0x0000000000000000000000000000000000000000', // Not directly supported, would need wrapping
   },
 }

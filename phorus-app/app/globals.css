@@ -16,6 +16,22 @@ body {
   background: var(--black);
   color: #ffffff;
   font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden; /* Hide horizontal scrollbar */
+}
+
+html {
+  overflow-y: auto; /* Allow vertical scrolling but style it */
+}
+
+/* Hide main page scrollbar but keep functionality */
+html::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+html {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
 }
 
 @layer utilities {
@@ -92,4 +108,61 @@ body {
   font-family: 'Playfair Display', Georgia, serif;
   font-weight: 300;
   letter-spacing: 0.02em;
+}
+
+/* Hide main page scrollbar */
+html {
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+html::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Hide scrollbar utility class */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar Styling - Only for dropdowns and containers */
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(168, 245, 208, 0.3);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 245, 208, 0.5);
+}
+
+/* Firefox scrollbar for containers */
+.overflow-y-auto,
+.overflow-x-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 245, 208, 0.3) rgba(0, 0, 0, 0.5);
 }

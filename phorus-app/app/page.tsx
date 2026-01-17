@@ -1,66 +1,137 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi } from 'viem'
 import ConnectWallet from './components/ConnectWallet'
+import ChainIcon from './components/ChainIcon'
+import TokenIcon from './components/TokenIcon'
 import { getQuote, getRoutes, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
 
 interface Chain {
   id: string
   name: string
-  icon: string
 }
 
 interface Token {
   symbol: string
   name: string
-  balance: string
-  icon: string
 }
 
 const chains: Chain[] = [
-  { id: 'ethereum', name: 'Ethereum', icon: '⟠' },
-  { id: 'arbitrum', name: 'Arbitrum', icon: '🔷' },
-  { id: 'optimism', name: 'Optimism', icon: '🔴' },
-  { id: 'base', name: 'Base', icon: '🔵' },
-  { id: 'hyperliquid', name: 'Hyperliquid', icon: '⚡' },
+  { id: 'ethereum', name: 'Ethereum' },
+  { id: 'arbitrum', name: 'Arbitrum' },
+  { id: 'optimism', name: 'Optimism' },
+  { id: 'base', name: 'Base' },
+  { id: 'hyperliquid', name: 'Hyperliquid' },
 ]
 
-const tokens: Token[] = [
-  { symbol: 'USDC', name: 'USD Coin', balance: '0.00', icon: '💵' },
-  { symbol: 'USDT', name: 'Tether', balance: '0.00', icon: '💵' },
-  { symbol: 'ETH', name: 'Ethereum', balance: '0.00', icon: '⟠' },
-]
+// Tokens available per chain
+const getTokensForChain = (chainId: string): Token[] => {
+  const chainTokens: Record<string, Token[]> = {
+    ethereum: [
+      { symbol: 'ETH', name: 'Ethereum' },
+      { symbol: 'USDC', name: 'USD Coin' },
+      { symbol: 'USDT', name: 'Tether' },
+      { symbol: 'WBTC', name: 'Wrapped Bitcoin' },
+      { symbol: 'DAI', name: 'Dai Stablecoin' },
+      { symbol: 'WETH', name: 'Wrapped Ethereum' },
+    ],
+    arbitrum: [
+      { symbol: 'ETH', name: 'Ethereum' },
+      { symbol: 'USDC', name: 'USD Coin' },
+      { symbol: 'USDT', name: 'Tether' },
+      { symbol: 'ARB', name: 'Arbitrum' },
+      { symbol: 'WBTC', name: 'Wrapped Bitcoin' },
+      { symbol: 'WETH', name: 'Wrapped Ethereum' },
+    ],
+    optimism: [
+      { symbol: 'ETH', name: 'Ethereum' },
+      { symbol: 'USDC', name: 'USD Coin' },
+      { symbol: 'USDT', name: 'Tether' },
+      { symbol: 'OP', name: 'Optimism' },
+      { symbol: 'WETH', name: 'Wrapped Ethereum' },
+    ],
+    base: [
+      { symbol: 'ETH', name: 'Ethereum' },
+      { symbol: 'USDC', name: 'USD Coin' },
+      { symbol: 'USDT', name: 'Tether' },
+      { symbol: 'WETH', name: 'Wrapped Ethereum' },
+    ],
+    hyperliquid: [
+      { symbol: 'USDC', name: 'USD Coin' },
+      { symbol: 'USDT', name: 'Tether' },
+      { symbol: 'ETH', name: 'Ethereum' },
+    ],
+  }
+  
+  return chainTokens[chainId] || chainTokens.ethereum
+}
 
 export default function BridgePage() {
   const { address, isConnected, chain } = useAccount()
   
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
   const [toChain, setToChain] = useState<Chain>(chains[4]) // Hyperliquid
-  const [fromToken, setFromToken] = useState<Token>(tokens[0])
-  const [toToken, setToToken] = useState<Token>(tokens[0])
+  const [fromToken, setFromToken] = useState<Token>(getTokensForChain(chains[0].id)[0])
+  const [toToken, setToToken] = useState<Token>(getTokensForChain(chains[4].id)[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
+  
+  // State for unified selector
+  const [showFromSelector, setShowFromSelector] = useState(false)
+  const [showToSelector, setShowToSelector] = useState(false)
+  const [fromSearchQuery, setFromSearchQuery] = useState('')
+  const [toSearchQuery, setToSearchQuery] = useState('')
+  const [fromChainFilter, setFromChainFilter] = useState<string | null>(null)
+  const [toChainFilter, setToChainFilter] = useState<string | null>(null)
   
   // Get native balance
   const { data: nativeBalance } = useBalance({ address })
   
-  // Get token balance when a token is selected (not ETH) - use useMemo to avoid initialization issues
-  const tokenAddress = fromToken.symbol !== 'ETH' 
-    ? (TOKEN_ADDRESSES[fromChain.id]?.[fromToken.symbol] || TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol])
-    : undefined
+  // Get token balance when a token is selected (not ETH)
+  // Compute token address based on current chain and token symbol
+  const tokenAddress = useMemo(() => {
+    if (fromToken.symbol === 'ETH') return undefined
+    const chainTokens = TOKEN_ADDRESSES[fromChain.id]
+    const address = chainTokens?.[fromToken.symbol] || TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol]
+    // For Hyperliquid USDT, use the same address as USDC for now (may need to be updated when USDT is fully enabled)
+    if (fromChain.id === 'hyperliquid' && fromToken.symbol === 'USDT') {
+      // USDT on Hyperliquid may use the same contract as USDC or may not be fully enabled yet
+      return chainTokens?.['USDC'] as `0x${string}` | undefined
+    }
+    return address as `0x${string}` | undefined
+  }, [fromChain.id, fromToken.symbol])
   
-  const { data: tokenBalance } = useBalance({
+  const { data: tokenBalance, isLoading: isLoadingTokenBalance } = useBalance({
     address,
-    token: tokenAddress as `0x${string}` | undefined,
+    token: tokenAddress,
     query: {
-      enabled: !!tokenAddress && isConnected,
+      enabled: !!tokenAddress && isConnected && !!fromToken.symbol && tokenAddress !== '0x0000000000000000000000000000000000000000',
     },
   })
   
-  // Use token balance if available, otherwise native balance
-  const balance = fromToken.symbol !== 'ETH' && tokenBalance ? tokenBalance : nativeBalance
+  // Use token balance if available, otherwise native balance (only for ETH)
+  // If token is not ETH and we don't have a valid token address or balance, show null/zero
+  const balance = useMemo(() => {
+    if (fromToken.symbol === 'ETH') {
+      return nativeBalance
+    }
+    // If we have a token address but no balance data yet, return undefined to show loading
+    if (tokenAddress && isLoadingTokenBalance) {
+      return undefined
+    }
+    // If we have token balance, use it
+    if (tokenBalance) {
+      return tokenBalance
+    }
+    // If no token address (e.g., unsupported token on chain), return null to show no balance
+    if (!tokenAddress) {
+      return null
+    }
+    // Fallback to native balance only if token query completed but returned no balance
+    return nativeBalance
+  }, [fromToken.symbol, tokenAddress, tokenBalance, nativeBalance, isLoadingTokenBalance])
   
   // Quote state
   const [quote, setQuote] = useState<any>(null)
@@ -87,6 +158,21 @@ export default function BridgePage() {
     fromToken: string
     toChain: string
   } | null>(null)
+  
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.selector-dropdown')) {
+        setShowFromSelector(false)
+        setShowToSelector(false)
+      }
+    }
+    if (showFromSelector || showToSelector) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showFromSelector, showToSelector])
 
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
@@ -110,6 +196,23 @@ export default function BridgePage() {
       return () => clearTimeout(timer)
     }
   }, [isConfirmed, txHash, fromToken.symbol, toChain.name])
+
+  // Update token when chain changes to ensure token exists on new chain
+  useEffect(() => {
+    const availableTokens = getTokensForChain(fromChain.id)
+    const currentTokenExists = availableTokens.some(t => t.symbol === fromToken.symbol)
+    if (!currentTokenExists) {
+      setFromToken(availableTokens[0] || { symbol: 'ETH', name: 'Ethereum' })
+    }
+  }, [fromChain.id])
+
+  useEffect(() => {
+    const availableTokens = getTokensForChain(toChain.id)
+    const currentTokenExists = availableTokens.some(t => t.symbol === toToken.symbol)
+    if (!currentTokenExists) {
+      setToToken(availableTokens[0] || { symbol: 'USDC', name: 'USD Coin' })
+    }
+  }, [toChain.id])
 
   // Fetch quote when parameters change
   useEffect(() => {
@@ -291,7 +394,10 @@ export default function BridgePage() {
         // Try to switch chain automatically
         if (switchChain && requiredChainId) {
           try {
-            await switchChain({ chainId: requiredChainId as number })
+            const result = switchChain({ chainId: requiredChainId as number })
+            if (result && typeof result.then === 'function') {
+              await result
+            }
             setChainMismatch(false)
             setQuoteError(null)
             // Wait a moment for chain switch, then retry
@@ -349,7 +455,7 @@ export default function BridgePage() {
   }
 
   return (
-    <main className="min-h-screen relative overflow-hidden">
+    <main className="min-h-screen relative overflow-x-hidden">
       {/* Fluid gradient background */}
       <div className="fluid-gradient" />
       
@@ -373,63 +479,162 @@ export default function BridgePage() {
                     Balance: {parseFloat(balance.formatted).toFixed(4)} {balance.symbol}
                   </span>
                 )}
+                {isConnected && balance === null && fromToken.symbol !== 'ETH' && (
+                  <span className="text-xs text-gray-500">
+                    Balance: 0.0000 {fromToken.symbol}
+                  </span>
+                )}
               </div>
               
-              <div className="flex gap-3">
-                {/* Chain Selector */}
-                <div className="relative flex-1 group">
-                  <select
-                    value={fromChain.id}
-                    onChange={(e) => {
-                      const newChain = chains.find(c => c.id === e.target.value) || chains[0]
-                      setFromChain(newChain)
-                      // Clear quote when chain changes
-                      setQuote(null)
-                      setQuoteError(null)
-                      // Auto-switch wallet to the selected chain
-                      if (isConnected && switchChain) {
-                        const chainId = CHAIN_IDS[newChain.id]
-                        if (chainId && chain?.id !== chainId) {
-                          switchChain({ chainId }).catch((error) => {
-                            console.warn('Could not switch chain:', error)
-                          })
+              {/* Unified Chain/Token Selector */}
+              <div className="relative selector-dropdown">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowFromSelector(!showFromSelector)
+                  }}
+                  className="bridge-select w-full px-4 py-4 rounded-xl flex items-center gap-3 cursor-pointer text-base font-medium transition-all hover:border-mint/30"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <TokenIcon symbol={fromToken.symbol} size={32} chainId={fromChain.id} />
+                    <div className="flex-1 text-left">
+                      <div className="text-white font-medium">{fromToken.symbol}</div>
+                      <div className="text-xs text-gray-400">{fromChain.name}</div>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {showFromSelector && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
+                    {/* Search Bar */}
+                    <div className="p-3 border-b border-mint/10">
+                      <input
+                        type="text"
+                        placeholder="Search token and chain"
+                        value={fromSearchQuery}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          setFromSearchQuery(e.target.value)
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
+                      />
+                    </div>
+                    
+                    {/* Chain Filter Buttons */}
+                    <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setFromChainFilter(null)
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                          fromChainFilter === null
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {chains.map((chain) => (
+                        <button
+                          key={chain.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFromChainFilter(chain.id)
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
+                            fromChainFilter === chain.id
+                              ? 'bg-mint/20 text-mint border border-mint/30'
+                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                          }`}
+                        >
+                          <ChainIcon chainId={chain.id} size={16} />
+                          {chain.name}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Token List */}
+                    <div className="p-2 max-h-64 overflow-y-auto">
+                      {(() => {
+                        // Filter tokens based on search and chain filter
+                        const filteredChains = fromChainFilter
+                          ? chains.filter(c => c.id === fromChainFilter)
+                          : chains
+                        
+                        const allTokens = filteredChains.flatMap(chain => 
+                          getTokensForChain(chain.id)
+                            .filter(token => 
+                              !fromSearchQuery || 
+                              token.symbol.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
+                              token.name.toLowerCase().includes(fromSearchQuery.toLowerCase()) ||
+                              chain.name.toLowerCase().includes(fromSearchQuery.toLowerCase())
+                            )
+                            .map(token => ({ ...token, chain }))
+                        )
+                        
+                        // Remove duplicates by symbol
+                        const uniqueTokens = Array.from(
+                          new Map(allTokens.map(t => [t.symbol, t])).values()
+                        )
+                        
+                        if (uniqueTokens.length === 0) {
+                          return (
+                            <div className="text-center py-8 text-gray-500 text-sm">
+                              No tokens found
+                            </div>
+                          )
                         }
-                      }
-                    }}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
-                  >
-                    {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id} className="bg-black">
-                        {chain.icon} {chain.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                        
+                        return uniqueTokens.map(({ symbol, name, chain: tokenChain }) => (
+                          <button
+                            key={`${tokenChain.id}-${symbol}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setFromChain(tokenChain)
+                              // Use the clicked token, but verify it exists on the chain
+                              const availableTokens = getTokensForChain(tokenChain.id)
+                              const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
+                              setFromToken(selectedToken)
+                              setFromSearchQuery('')
+                              setFromChainFilter(null)
+                              setShowFromSelector(false)
+                              setQuote(null)
+                              setQuoteError(null)
+                              if (isConnected && switchChain) {
+                                const chainId = CHAIN_IDS[tokenChain.id]
+                                if (chainId && chain?.id !== chainId) {
+                                  try {
+                                    const result = switchChain({ chainId })
+                                    if (result && typeof result.catch === 'function') {
+                                      result.catch(() => {})
+                                    }
+                                  } catch (error) {
+                                    // Silently handle switch chain errors
+                                    console.error('Error switching chain:', error)
+                                  }
+                                }
+                              }
+                            }}
+                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
+                              fromToken.symbol === symbol && fromChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                            }`}
+                          >
+                            <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
+                            <div className="flex-1 text-left">
+                              <div className="text-white font-medium">{symbol}</div>
+                              <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
+                            </div>
+                          </button>
+                        ))
+                      })()}
+                    </div>
                   </div>
-                </div>
-
-                {/* Token Selector */}
-                <div className="relative flex-1 group">
-                  <select
-                    value={fromToken.symbol}
-                    onChange={(e) => setFromToken(tokens.find(t => t.symbol === e.target.value) || tokens[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
-                  >
-                    {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol} className="bg-black">
-                        {token.icon} {token.symbol}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Amount Input */}
@@ -501,46 +706,139 @@ export default function BridgePage() {
                 )}
               </div>
               
-              <div className="flex gap-3">
-                {/* Chain Selector */}
-                <div className="relative flex-1 group">
-                  <select
-                    value={toChain.id}
-                    onChange={(e) => setToChain(chains.find(c => c.id === e.target.value) || chains[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
-                  >
-                    {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id} className="bg-black">
-                        {chain.icon} {chain.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+              {/* Unified Chain/Token Selector */}
+              <div className="relative selector-dropdown">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowToSelector(!showToSelector)
+                  }}
+                  className="bridge-select w-full px-4 py-4 rounded-xl flex items-center gap-3 cursor-pointer text-base font-medium transition-all hover:border-mint/30"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <TokenIcon symbol={toToken.symbol} size={32} chainId={toChain.id} />
+                    <div className="flex-1 text-left">
+                      <div className="text-white font-medium">{toToken.symbol}</div>
+                      <div className="text-xs text-gray-400">{toChain.name}</div>
+                    </div>
                   </div>
-                </div>
-
-                {/* Token Selector */}
-                <div className="relative flex-1 group">
-                  <select
-                    value={toToken.symbol}
-                    onChange={(e) => setToToken(tokens.find(t => t.symbol === e.target.value) || tokens[0])}
-                    className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
-                  >
-                    {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol} className="bg-black">
-                        {token.icon} {token.symbol}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none transition-transform group-hover:scale-110">
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {showToSelector && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
+                    {/* Search Bar */}
+                    <div className="p-3 border-b border-mint/10">
+                      <input
+                        type="text"
+                        placeholder="Search token and chain"
+                        value={toSearchQuery}
+                        onChange={(e) => {
+                          e.stopPropagation()
+                          setToSearchQuery(e.target.value)
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
+                      />
+                    </div>
+                    
+                    {/* Chain Filter Buttons */}
+                    <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setToChainFilter(null)
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+                          toChainFilter === null
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {chains.map((chain) => (
+                        <button
+                          key={chain.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setToChainFilter(chain.id)
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
+                            toChainFilter === chain.id
+                              ? 'bg-mint/20 text-mint border border-mint/30'
+                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                          }`}
+                        >
+                          <ChainIcon chainId={chain.id} size={16} />
+                          {chain.name}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Token List */}
+                    <div className="p-2 max-h-64 overflow-y-auto">
+                      {(() => {
+                        // Filter tokens based on search and chain filter
+                        const filteredChains = toChainFilter
+                          ? chains.filter(c => c.id === toChainFilter)
+                          : chains
+                        
+                        const allTokens = filteredChains.flatMap(chain => 
+                          getTokensForChain(chain.id)
+                            .filter(token => 
+                              !toSearchQuery || 
+                              token.symbol.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
+                              token.name.toLowerCase().includes(toSearchQuery.toLowerCase()) ||
+                              chain.name.toLowerCase().includes(toSearchQuery.toLowerCase())
+                            )
+                            .map(token => ({ ...token, chain }))
+                        )
+                        
+                        // Remove duplicates by symbol
+                        const uniqueTokens = Array.from(
+                          new Map(allTokens.map(t => [t.symbol, t])).values()
+                        )
+                        
+                        if (uniqueTokens.length === 0) {
+                          return (
+                            <div className="text-center py-8 text-gray-500 text-sm">
+                              No tokens found
+                            </div>
+                          )
+                        }
+                        
+                        return uniqueTokens.map(({ symbol, name, chain: tokenChain }) => (
+                          <button
+                            key={`${tokenChain.id}-${symbol}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setToChain(tokenChain)
+                              // Ensure token exists on the selected chain
+                              const availableTokens = getTokensForChain(tokenChain.id)
+                              const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
+                              setToToken(selectedToken)
+                              setToSearchQuery('')
+                              setToChainFilter(null)
+                              setShowToSelector(false)
+                            }}
+                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
+                              toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                            }`}
+                          >
+                            <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
+                            <div className="flex-1 text-left">
+                              <div className="text-white font-medium">{symbol}</div>
+                              <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
+                            </div>
+                          </button>
+                        ))
+                      })()}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Hyperliquid Wallet Address Input */}
@@ -618,8 +916,17 @@ export default function BridgePage() {
                     <button
                       onClick={() => {
                         const requiredChainId = quote.transactionRequest?.chainId || quote.action.fromChainId
-                        if (requiredChainId) {
-                          switchChain({ chainId: requiredChainId as number })
+                        if (requiredChainId && switchChain) {
+                          try {
+                            const result = switchChain({ chainId: requiredChainId as number })
+                            if (result && typeof result.catch === 'function') {
+                              result.catch((error: any) => {
+                                console.error('Error switching chain:', error)
+                              })
+                            }
+                          } catch (error) {
+                            console.error('Error switching chain:', error)
+                          }
                         }
                       }}
                       className="ml-2 underline hover:text-yellow-200"
