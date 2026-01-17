@@ -82,6 +82,18 @@ export default function BridgePage() {
   const [needsApproval, setNeedsApproval] = useState(false)
   const [chainMismatch, setChainMismatch] = useState(false)
 
+  // Reset form when bridge is complete
+  useEffect(() => {
+    if (isConfirmed) {
+      // Reset form immediately
+      setAmount('')
+      setQuote(null)
+      setQuoteError(null)
+      setNeedsApproval(false)
+      setChainMismatch(false)
+    }
+  }, [isConfirmed])
+
   // Fetch quote when parameters change
   useEffect(() => {
     if (!isConnected || !address || !amount || parseFloat(amount) <= 0) {
