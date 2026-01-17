@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
+import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi } from 'viem'
 import ConnectWallet from './components/ConnectWallet'
-import { getQuote, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
+import { getQuote, getRoutes, CHAIN_IDS, TOKEN_ADDRESSES } from './utils/lifi'
 
 interface Chain {
   id: string
@@ -35,7 +35,6 @@ const tokens: Token[] = [
 
 export default function BridgePage() {
   const { address, isConnected, chain } = useAccount()
-  const { data: balance } = useBalance({ address })
   
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
   const [toChain, setToChain] = useState<Chain>(chains[4]) // Hyperliquid
@@ -43,6 +42,25 @@ export default function BridgePage() {
   const [toToken, setToToken] = useState<Token>(tokens[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
+  
+  // Get native balance
+  const { data: nativeBalance } = useBalance({ address })
+  
+  // Get token balance when a token is selected (not ETH) - use useMemo to avoid initialization issues
+  const tokenAddress = fromToken.symbol !== 'ETH' 
+    ? (TOKEN_ADDRESSES[fromChain.id]?.[fromToken.symbol] || TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol])
+    : undefined
+  
+  const { data: tokenBalance } = useBalance({
+    address,
+    token: tokenAddress as `0x${string}` | undefined,
+    query: {
+      enabled: !!tokenAddress && isConnected,
+    },
+  })
+  
+  // Use token balance if available, otherwise native balance
+  const balance = fromToken.symbol !== 'ETH' && tokenBalance ? tokenBalance : nativeBalance
   
   // Quote state
   const [quote, setQuote] = useState<any>(null)
@@ -52,6 +70,7 @@ export default function BridgePage() {
   // Transaction state
   const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
   const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   })
@@ -61,6 +80,7 @@ export default function BridgePage() {
   
   // Approval state
   const [needsApproval, setNeedsApproval] = useState(false)
+  const [chainMismatch, setChainMismatch] = useState(false)
 
   // Fetch quote when parameters change
   useEffect(() => {
@@ -74,7 +94,8 @@ export default function BridgePage() {
       setQuoteError(null)
       
       try {
-        const quoteData = await getQuote({
+        // Try to get advanced routes first to find direct routes
+        const routesData = await getRoutes({
           fromChain: fromChain.id,
           toChain: toChain.id,
           fromToken: fromToken.symbol,
@@ -82,11 +103,62 @@ export default function BridgePage() {
           fromAmount: amount,
           fromAddress: address,
           toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
-          slippage: 0.03, // 3% slippage
+          slippage: 0.03,
         })
 
+        let quoteData = null
+
+        // If we have routes, try to find one that executes on the fromChain
+        if (routesData && routesData.routes && routesData.routes.length > 0) {
+          // Find a route where the first step executes on fromChain
+          const directRoute = routesData.routes.find((route: any) => {
+            const firstStep = route.steps[0]
+            return firstStep && firstStep.action.fromChainId === CHAIN_IDS[fromChain.id]
+          })
+
+          if (directRoute && directRoute.steps && directRoute.steps.length > 0) {
+            // Use the first step as our quote
+            const firstStep = directRoute.steps[0]
+            // We'll need to get the transaction for this step
+            // For now, fall back to simple quote
+          }
+        }
+
+        // Fall back to simple quote if no direct route found
+        if (!quoteData) {
+          quoteData = await getQuote({
+            fromChain: fromChain.id,
+            toChain: toChain.id,
+            fromToken: fromToken.symbol,
+            toToken: toToken.symbol,
+            fromAmount: amount,
+            fromAddress: address,
+            toAddress: toChain.id === 'hyperliquid' && hyperliquidAddress ? hyperliquidAddress : address,
+            slippage: 0.03, // 3% slippage
+          })
+        }
+
         if (quoteData) {
+          // CRITICAL: Reject quote if it's not on the fromChain
+          const requiredChainId = quoteData.transactionRequest?.chainId || quoteData.action.fromChainId
+          const expectedChainId = CHAIN_IDS[fromChain.id]
+          
+          if (requiredChainId !== expectedChainId) {
+            const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+            setQuoteError(`❌ This route requires ${wrongChainName} instead of ${fromChain.name}. Please try again or select a different route.`)
+            setQuote(null)
+            setNeedsApproval(false)
+            console.error('Quote rejected - wrong chain:', {
+              expected: expectedChainId,
+              got: requiredChainId,
+              fromChain: fromChain.name
+            })
+            return
+          }
+          
           setQuote(quoteData)
+          setQuoteError(null)
+          
           // Check if approval is needed
           if (quoteData.estimate.approvalAddress && fromToken.symbol !== 'ETH') {
             setNeedsApproval(true)
@@ -151,6 +223,63 @@ export default function BridgePage() {
         setQuoteError('No transaction data available')
         return
       }
+
+      // Check if user is on the correct chain
+      // The transaction should be on the fromChain, not any intermediate chain
+      const expectedChainId = CHAIN_IDS[fromChain.id]
+      const requiredChainId = txRequest.chainId || quote.action.fromChainId
+      const currentChainId = chain?.id
+
+      console.log('Chain check:', {
+        fromChain: fromChain.name,
+        expectedChainId,
+        requiredChainId,
+        currentChainId,
+        txRequestChainId: txRequest.chainId
+      })
+
+      // CRITICAL: Reject if the transaction is not on the fromChain
+      // This prevents signing on the wrong network (e.g., Ethereum when bridging from Base)
+      if (requiredChainId !== expectedChainId) {
+        setChainMismatch(true)
+        const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+        setQuoteError(`❌ Error: This route requires ${wrongChainName} instead of ${fromChain.name}. Please refresh to get a direct route.`)
+        console.error('Chain mismatch - rejecting transaction:', {
+          expected: expectedChainId,
+          got: requiredChainId,
+          fromChain: fromChain.name,
+          txRequest: txRequest
+        })
+        return // BLOCK the transaction
+      }
+
+      // Check if user is on the correct chain
+      if (currentChainId !== requiredChainId) {
+        setChainMismatch(true)
+        const chainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
+        setQuoteError(`Please switch to ${chainName} (Chain ID: ${requiredChainId}) to execute this transaction`)
+        
+        // Try to switch chain automatically
+        if (switchChain && requiredChainId) {
+          try {
+            await switchChain({ chainId: requiredChainId as number })
+            setChainMismatch(false)
+            setQuoteError(null)
+            // Wait a moment for chain switch, then retry
+            setTimeout(() => {
+              handleBridge()
+            }, 1000)
+            return
+          } catch (switchError: any) {
+            console.error('Error switching chain:', switchError)
+            setQuoteError(`Please manually switch to ${chainName} in your wallet`)
+            return
+          }
+        }
+        return
+      }
+
+      setChainMismatch(false)
 
       // Execute the transaction using sendTransaction
       // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
@@ -222,7 +351,22 @@ export default function BridgePage() {
                 <div className="relative flex-1 group">
                   <select
                     value={fromChain.id}
-                    onChange={(e) => setFromChain(chains.find(c => c.id === e.target.value) || chains[0])}
+                    onChange={(e) => {
+                      const newChain = chains.find(c => c.id === e.target.value) || chains[0]
+                      setFromChain(newChain)
+                      // Clear quote when chain changes
+                      setQuote(null)
+                      setQuoteError(null)
+                      // Auto-switch wallet to the selected chain
+                      if (isConnected && switchChain) {
+                        const chainId = CHAIN_IDS[newChain.id]
+                        if (chainId && chain?.id !== chainId) {
+                          switchChain({ chainId }).catch((error) => {
+                            console.warn('Could not switch chain:', error)
+                          })
+                        }
+                      }
+                    }}
                     className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {chains.map((chain) => (
@@ -435,6 +579,29 @@ export default function BridgePage() {
               </button>
             )}
 
+            {/* Chain Mismatch Warning */}
+            {chainMismatch && quote?.transactionRequest && (
+              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                <div className="text-sm text-yellow-400 mb-2">Chain Mismatch</div>
+                <div className="text-xs text-yellow-300">
+                  This transaction needs to be executed on {fromChain.name}. 
+                  {switchChain && (
+                    <button
+                      onClick={() => {
+                        const requiredChainId = quote.transactionRequest?.chainId || quote.action.fromChainId
+                        if (requiredChainId) {
+                          switchChain({ chainId: requiredChainId as number })
+                        }
+                      }}
+                      className="ml-2 underline hover:text-yellow-200"
+                    >
+                      Switch Chain
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Bridge Button */}
             <button
               disabled={
@@ -444,10 +611,12 @@ export default function BridgePage() {
                 loadingQuote || 
                 !quote || 
                 (needsApproval && !isApprovalConfirmed) ||
+                chainMismatch ||
                 isPendingTx || 
                 isConfirming ||
                 isApproving ||
-                isApprovalConfirming
+                isApprovalConfirming ||
+                isSwitchingChain
               }
               onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
@@ -458,8 +627,12 @@ export default function BridgePage() {
                 ? 'Loading Quote...' 
                 : !quote 
                 ? 'Enter Amount' 
+                : chainMismatch
+                ? 'Switch Chain First'
                 : needsApproval && !isApprovalConfirmed
                 ? 'Approve Token First'
+                : isSwitchingChain
+                ? 'Switching Chain...'
                 : isPendingTx || isConfirming
                 ? isConfirming ? 'Confirming...' : 'Processing...'
                 : isConfirmed
