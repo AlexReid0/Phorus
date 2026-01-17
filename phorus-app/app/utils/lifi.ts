@@ -5872,6 +5872,8 @@ export async function getRoutes(params: {
         toAddress: params.toAddress,
         options: {
           slippage,
+          // Enable messaging flow for Hyperliquid to support direct core account transfers
+          executionType: params.toChain === 'hpl' || params.toChain === 'hyperliquid' ? 'all' : undefined,
           ...(LIFI_INTEGRATOR_ID && { integrator: LIFI_INTEGRATOR_ID }),
         },
       }),
