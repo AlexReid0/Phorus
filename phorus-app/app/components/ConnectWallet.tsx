@@ -38,7 +38,7 @@ export default function ConnectWallet() {
     )
   }
 
-  if (!isConnected) {
+  if (!isConnected || !address) {
     return (
       <button
         onClick={() => open()}
@@ -60,17 +60,17 @@ export default function ConnectWallet() {
       >
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-          <span className="font-mono">{formatAddress(address!)}</span>
+          <span className="font-mono">{formatAddress(address)}</span>
           {balance && (
             <span className="text-xs opacity-75">
               {formatBalance(balance.formatted)} {balance.symbol}
             </span>
           )}
         </div>
-        <svg 
+        <svg
           className={`w-4 h-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -89,7 +89,7 @@ export default function ConnectWallet() {
               </div>
             </div>
             <div className="flex items-center justify-between mb-1">
-              <div className="font-mono text-sm text-white">{formatAddress(address!)}</div>
+              <div className="font-mono text-sm text-white">{formatAddress(address)}</div>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
