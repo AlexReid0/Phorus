@@ -3,7 +3,7 @@
 const LIFI_API_BASE = 'https://li.quest/v1'
 // Get integrator ID from environment variable (for tracking in LiFi portal)
 // This should be set in .env.local as NEXT_PUBLIC_LIFI_INTEGRATOR_ID
-const LIFI_INTEGRATOR_ID = process.env.NEXT_PUBLIC_LIFI_INTEGRATOR_ID || ''
+const LIFI_INTEGRATOR_ID = process.env.NEXT_PUBLIC_LIFI_INTEGRATOR_ID || 'phorus-2'
 
 // Import chain mappings from generated file
 import { KEY_TO_CHAIN_ID } from '../../scripts/generated-chains'
@@ -158,11 +158,11 @@ async function getTokenFromLiFi(chainId: number, tokenSymbol: string): Promise<s
     } catch (err) {
       // Continue to fallback methods
     }
-    
+
     // For Hyperliquid, try symbol variations
     if (chainId === 1337) {
       const symbolVariations = [tokenSymbol, `${tokenSymbol} Spot`, `${tokenSymbol}-SPOT`, `${tokenSymbol}_SPOT`]
-      
+
       for (const symbol of symbolVariations) {
         try {
           const response = await fetch(`${LIFI_API_BASE}/token?chain=1337&token=${encodeURIComponent(symbol)}`)
@@ -178,7 +178,7 @@ async function getTokenFromLiFi(chainId: number, tokenSymbol: string): Promise<s
         }
       }
     }
-    
+
     // Fallback: Query all tokens for the chain and search
     try {
       const response = await fetch(`${LIFI_API_BASE}/tokens?chain=${chainId}`)
@@ -187,34 +187,34 @@ async function getTokenFromLiFi(chainId: number, tokenSymbol: string): Promise<s
         if (Array.isArray(data.tokens)) {
           const tokenSymbolUpper = tokenSymbol.toUpperCase()
           // Look for matching token
-          let foundToken = data.tokens.find((token: any) => 
-            token.symbol?.toUpperCase() === tokenSymbolUpper || 
+          let foundToken = data.tokens.find((token: any) =>
+            token.symbol?.toUpperCase() === tokenSymbolUpper ||
             token.name?.toUpperCase() === tokenSymbolUpper
           )
-          
+
           // For Hyperliquid, also try to find spot tokens
           if (!foundToken && chainId === 1337) {
             foundToken = data.tokens.find((token: any) => {
               const symbolMatch = token.symbol?.toUpperCase().includes(tokenSymbolUpper)
               const nameMatch = token.name?.toLowerCase().includes(tokenSymbol.toLowerCase())
-              const isSpot = token.name?.toLowerCase().includes('spot') || 
-                           token.symbol?.toUpperCase().includes('SPOT')
+              const isSpot = token.name?.toLowerCase().includes('spot') ||
+                token.symbol?.toUpperCase().includes('SPOT')
               return (symbolMatch || nameMatch) && isSpot
             })
           }
-          
+
           // For Hyperliquid USDC specifically, look for any USDC token
           if (!foundToken && chainId === 1337 && tokenSymbolUpper === 'USDC') {
-            foundToken = data.tokens.find((token: any) => 
+            foundToken = data.tokens.find((token: any) =>
               token.symbol?.toUpperCase() === 'USDC' ||
-              (token.symbol?.toUpperCase().includes('USDC') && 
-               !token.address?.match(/0{20,}$/)) // Exclude invalid addresses
+              (token.symbol?.toUpperCase().includes('USDC') &&
+                !token.address?.match(/0{20,}$/)) // Exclude invalid addresses
             )
           }
-          
-          if (foundToken?.address && 
-              foundToken.address !== '0x0000000000000000000000000000000000000000' &&
-              !foundToken.address.match(/0{20,}$/)) { // Exclude addresses ending with many zeros
+
+          if (foundToken?.address &&
+            foundToken.address !== '0x0000000000000000000000000000000000000000' &&
+            !foundToken.address.match(/0{20,}$/)) { // Exclude addresses ending with many zeros
             console.log(`Found ${tokenSymbol} token from LiFi tokens list for chain ${chainId}:`, foundToken)
             return foundToken.address
           }
@@ -223,7 +223,7 @@ async function getTokenFromLiFi(chainId: number, tokenSymbol: string): Promise<s
     } catch (err) {
       console.error('Error querying LiFi tokens list:', err)
     }
-    
+
     return null
   } catch (error) {
     console.error('Error querying LiFi token API:', error)
@@ -241,16 +241,16 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
     }
     return '0x0000000000000000000000000000000000000000'
   }
-  
+
   // For Hyperliquid, skip TOKEN_ADDRESSES lookup - always query LiFi API
   // The generated addresses file has invalid addresses for Hyperliquid
   if (chainId === 'hpl' || chainId === 'hyperliquid' || chainId === '1337') {
     return null // Return null to force LiFi API lookup
   }
-  
+
   // Map chain ID to TOKEN_ADDRESSES key
   const tokenAddressKey = getTokenAddressKey(chainId)
-  
+
   // Try exact match on the chain
   const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
   if (chainTokens?.[symbol]) {
@@ -260,12 +260,12 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
       return address
     }
   }
-  
+
   // Try ethereum as fallback
   if (TOKEN_ADDRESSES['ethereum']?.[symbol]) {
     return TOKEN_ADDRESSES['ethereum'][symbol]
   }
-  
+
   // Try case-insensitive match
   const symbolUpper = symbol.toUpperCase()
   if (chainTokens) {
@@ -275,7 +275,7 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
       }
     }
   }
-  
+
   // Try ethereum as fallback with case-insensitive
   const ethTokens = TOKEN_ADDRESSES['ethereum']
   if (ethTokens && tokenAddressKey !== 'ethereum') {
@@ -285,7 +285,7 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
       }
     }
   }
-  
+
   return null
 }
 
@@ -325,7 +325,7 @@ export async function getQuote(params: {
         console.log(`Found Hyperliquid ${params.toToken} address from LiFi:`, toTokenAddress)
       }
     }
-    
+
     // Also try LiFi API for fromToken if on Hyperliquid
     if (!fromTokenAddress && fromChainId === 1337) {
       console.log(`Querying LiFi API for Hyperliquid ${params.fromToken}...`)
@@ -335,7 +335,7 @@ export async function getQuote(params: {
         console.log(`Found Hyperliquid ${params.fromToken} address from LiFi:`, fromTokenAddress)
       }
     }
-    
+
     // For other chains, try querying LiFi API as fallback if token not found
     if (!fromTokenAddress && fromChainId !== 1337) {
       console.log(`Token ${params.fromToken} not found in TOKEN_ADDRESSES for ${params.fromChain}, querying LiFi API...`)
@@ -345,7 +345,7 @@ export async function getQuote(params: {
         console.log(`Found ${params.fromToken} address from LiFi for chain ${fromChainId}:`, fromTokenAddress)
       }
     }
-    
+
     if (!toTokenAddress && toChainId !== 1337) {
       console.log(`Token ${params.toToken} not found in TOKEN_ADDRESSES for ${params.toChain}, querying LiFi API...`)
       const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
@@ -362,7 +362,7 @@ export async function getQuote(params: {
       if (params.toToken === 'ETH' || params.toToken === 'WETH') {
         throw new Error(`ETH is not available on Hyperliquid. Please select USDC as the destination token. Hyperliquid uses USDC as its native token.`)
       }
-      
+
       console.error('Invalid zero address for Hyperliquid token. Attempting LiFi API lookup...')
       const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
       if (lifiTokenAddress) {
@@ -376,7 +376,7 @@ export async function getQuote(params: {
       const missingTokens = []
       if (!fromTokenAddress) missingTokens.push(`${params.fromToken} on ${params.fromChain}`)
       if (!toTokenAddress) missingTokens.push(`${params.toToken} on ${params.toChain}`)
-      
+
       console.error('Token not found:', {
         fromToken: params.fromToken,
         toToken: params.toToken,
@@ -386,7 +386,7 @@ export async function getQuote(params: {
         toTokenAddress,
         missingTokens
       })
-      
+
       // Throw error with helpful message
       throw new Error(`Token${missingTokens.length > 1 ? 's' : ''} not found: ${missingTokens.join(', ')}. Please select a different token.`)
     }
@@ -414,7 +414,7 @@ export async function getQuote(params: {
     }
 
     const response = await fetch(url.toString())
-    
+
     if (!response.ok) {
       const errorText = await response.text()
       let errorMessage = 'Unknown error'
@@ -477,7 +477,7 @@ export async function getRoutes(params: {
         console.log(`Found Hyperliquid ${params.toToken} address from LiFi:`, toTokenAddress)
       }
     }
-    
+
     if (!fromTokenAddress && fromChainId === 1337) {
       console.log(`Querying LiFi API for Hyperliquid ${params.fromToken}...`)
       const lifiTokenAddress = await getTokenFromLiFi(fromChainId, params.fromToken)
@@ -486,7 +486,7 @@ export async function getRoutes(params: {
         console.log(`Found Hyperliquid ${params.fromToken} address from LiFi:`, fromTokenAddress)
       }
     }
-    
+
     // For other chains, try querying LiFi API as fallback
     if (!fromTokenAddress && fromChainId !== 1337) {
       const lifiTokenAddress = await getTokenFromLiFi(fromChainId, params.fromToken)
@@ -494,7 +494,7 @@ export async function getRoutes(params: {
         fromTokenAddress = lifiTokenAddress
       }
     }
-    
+
     if (!toTokenAddress && toChainId !== 1337) {
       const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
       if (lifiTokenAddress) {
@@ -509,7 +509,7 @@ export async function getRoutes(params: {
       if (params.toToken === 'ETH' || params.toToken === 'WETH') {
         throw new Error(`ETH is not available on Hyperliquid. Please select USDC as the destination token. Hyperliquid uses USDC as its native token.`)
       }
-      
+
       console.error('Invalid zero address for Hyperliquid token. Attempting LiFi API lookup...')
       const lifiTokenAddress = await getTokenFromLiFi(toChainId, params.toToken)
       if (lifiTokenAddress) {
@@ -523,7 +523,7 @@ export async function getRoutes(params: {
       const missingTokens = []
       if (!fromTokenAddress) missingTokens.push(`${params.fromToken} on ${params.fromChain}`)
       if (!toTokenAddress) missingTokens.push(`${params.toToken} on ${params.toChain}`)
-      
+
       console.error('Token not found:', {
         fromToken: params.fromToken,
         toToken: params.toToken,
@@ -533,7 +533,7 @@ export async function getRoutes(params: {
         toTokenAddress,
         missingTokens
       })
-      
+
       // Throw error with helpful message
       throw new Error(`Token${missingTokens.length > 1 ? 's' : ''} not found: ${missingTokens.join(', ')}. Please select a different token.`)
     }
@@ -603,8 +603,13 @@ export async function getStepTransaction(step: any): Promise<any> {
       ...step,
       includedSteps: step.includedSteps || [],
     }
-    
-    const response = await fetch(`${LIFI_API_BASE}/advanced/stepTransaction`, {
+
+    const url = new URL(`${LIFI_API_BASE}/advanced/stepTransaction`)
+    if (LIFI_INTEGRATOR_ID) {
+      url.searchParams.set('integrator', LIFI_INTEGRATOR_ID)
+    }
+
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -642,7 +647,12 @@ export async function getStepTransaction(step: any): Promise<any> {
  */
 export async function relayMessage(step: any, signature: string): Promise<any> {
   try {
-    const response = await fetch(`${LIFI_API_BASE}/advanced/relay`, {
+    const url = new URL(`${LIFI_API_BASE}/advanced/relay`)
+    if (LIFI_INTEGRATOR_ID) {
+      url.searchParams.set('integrator', LIFI_INTEGRATOR_ID)
+    }
+
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -689,7 +699,7 @@ export async function getStatus(txHash: string, fromChain?: number, toChain?: nu
     if (toChain) url.searchParams.set('toChain', toChain.toString())
 
     const response = await fetch(url.toString())
-    
+
     if (!response.ok) {
       return null
     }
