@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain, useSignTypedData } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi, isAddress, getAddress } from 'viem'
 import Link from 'next/link'
@@ -174,34 +174,67 @@ export default function BridgePage() {
 
   // Handle multi-step execution: after bridge transaction is confirmed, proceed to messaging step
   useEffect(() => {
+    console.log('[useEffect: multi-step] Checking conditions', {
+      isConfirmed,
+      txHash,
+      hasSelectedRoute: !!selectedRoute,
+      executingSteps,
+      currentStepIndex,
+      totalSteps: selectedRoute?.steps?.length,
+      condition: isConfirmed && txHash && selectedRoute && executingSteps && currentStepIndex < selectedRoute.steps.length - 1,
+    })
+
     if (isConfirmed && txHash && selectedRoute && executingSteps && currentStepIndex < selectedRoute.steps.length - 1) {
+      console.log('[useEffect: multi-step] Conditions met, proceeding to next step')
       // Bridge transaction confirmed, now proceed to next step (messaging)
       const nextStepIndex = currentStepIndex + 1
       const nextStep = selectedRoute.steps[nextStepIndex]
 
+      console.log('[useEffect: multi-step] Next step:', {
+        nextStepIndex,
+        hasNextStep: !!nextStep,
+        stepTool: nextStep?.tool,
+        stepType: nextStep?.type,
+      })
+
       if (nextStep) {
         // Get transaction data for the next step
+        console.log('[useEffect: multi-step] Fetching transaction data for next step')
         getStepTransaction(nextStep).then((stepWithTx) => {
+          console.log('[useEffect: multi-step] Got step transaction data:', {
+            type: stepWithTx.type,
+            tool: stepWithTx.tool,
+            hasMessage: !!stepWithTx.message,
+          })
+
           const isMessagingStep = stepWithTx.type === 'message' ||
             stepWithTx.tool === 'hyperliquidSA' ||
             stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
             stepWithTx.message
 
+          console.log('[useEffect: multi-step] Step type check:', {
+            isMessagingStep,
+            hasMessage: !!stepWithTx.message,
+          })
+
           if (isMessagingStep && stepWithTx.message) {
+            console.log('[useEffect: multi-step] Executing messaging step')
             // Execute messaging step
             setCurrentStepIndex(nextStepIndex)
             setSelectedStep(nextStep)
 
             // Sign and relay the message
+            console.log('[useEffect: multi-step] Signing typed data for messaging step')
             signTypedDataAsync({
               domain: stepWithTx.message.domain,
               types: stepWithTx.message.types,
               primaryType: stepWithTx.message.primaryType,
               message: stepWithTx.message.message,
             }).then((signature) => {
+              console.log('[useEffect: multi-step] Message signed, relaying...')
               return relayMessage(nextStep, signature)
             }).then((relayResult) => {
-              console.log('Messaging step completed:', relayResult)
+              console.log('[useEffect: multi-step] Messaging step completed:', relayResult)
               // All steps completed
               setExecutingSteps(false)
               setCurrentStepIndex(0)
@@ -212,31 +245,80 @@ export default function BridgePage() {
                 toChain: toChain.name,
               })
               setSuccessTxHash(txHash) // Use the bridge txHash for tracking
+              console.log('[useEffect: multi-step] Success state set, all steps complete')
             }).catch((error) => {
-              console.error('Error executing messaging step:', error)
+              console.error('[useEffect: multi-step] Error executing messaging step:', error)
               setQuoteError(error?.message || 'Failed to execute messaging step')
               setExecutingSteps(false)
               setCurrentStepIndex(0)
             })
           } else {
             // Not a messaging step, might be another transaction
-            console.warn('Next step is not a messaging step:', stepWithTx)
+            console.warn('[useEffect: multi-step] Next step is not a messaging step:', stepWithTx)
             setExecutingSteps(false)
             setCurrentStepIndex(0)
           }
         }).catch((error) => {
-          console.error('Error getting next step transaction:', error)
+          console.error('[useEffect: multi-step] Error getting next step transaction:', error)
           setQuoteError(error?.message || 'Failed to get next step')
           setExecutingSteps(false)
           setCurrentStepIndex(0)
         })
+      } else {
+        console.warn('[useEffect: multi-step] No next step found')
+      }
+    } else {
+      if (isConfirmed && txHash && !executingSteps) {
+        console.log('[useEffect: multi-step] Transaction confirmed but not in multi-step mode (single-step route)')
       }
     }
   }, [isConfirmed, txHash, selectedRoute, executingSteps, currentStepIndex, signTypedDataAsync, fromToken.symbol, toChain.name])
 
+  // Track when txHash is set (transaction submitted)
+  const prevTxHash = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (txHash && txHash !== prevTxHash.current) {
+      console.log('[useEffect: txHash] Transaction hash received from wagmi:', {
+        txHash,
+        prevTxHash: prevTxHash.current,
+        isPendingTx,
+        isConfirming,
+        executingSteps,
+        currentStepIndex,
+      })
+      prevTxHash.current = txHash
+    }
+  }, [txHash, isPendingTx, isConfirming, executingSteps, currentStepIndex])
+
+  // Log transaction state changes
+  useEffect(() => {
+    console.log('[useEffect: txState] Transaction state changed', {
+      txHash,
+      isPendingTx,
+      isConfirming,
+      isConfirmed,
+      executingSteps,
+      currentStepIndex,
+      successTxHash,
+      isDismissed: txHash ? dismissedTxHashes.has(txHash) : false,
+      selectedRoute: !!selectedRoute,
+      routeSteps: selectedRoute?.steps?.length,
+    })
+  }, [txHash, isPendingTx, isConfirming, isConfirmed, executingSteps, currentStepIndex, successTxHash, dismissedTxHashes, selectedRoute])
+
   // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
+    console.log('[useEffect: success] Checking success conditions', {
+      isConfirmed,
+      txHash,
+      successTxHash,
+      isDismissed: dismissedTxHashes.has(txHash || ''),
+      executingSteps,
+      condition: isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash) && !executingSteps,
+    })
+
     if (isConfirmed && txHash && txHash !== successTxHash && !dismissedTxHashes.has(txHash) && !executingSteps) {
+      console.log('[useEffect: success] Conditions met, setting success state and scheduling reset')
       // Store details before resetting
       setSuccessDetails({
         fromToken: fromToken.symbol,
@@ -246,6 +328,7 @@ export default function BridgePage() {
 
       // Reset form after a short delay to show popup
       const timer = setTimeout(() => {
+        console.log('[useEffect: success] Resetting form after 5 seconds')
         setAmount('')
         setQuote(null)
         setQuoteError(null)
@@ -656,10 +739,32 @@ export default function BridgePage() {
   }
 
   const handleBridge = async () => {
-    if (!quote || !address || !isConnected) return
+    console.log('[handleBridge] Called', {
+      hasQuote: !!quote,
+      hasAddress: !!address,
+      isConnected,
+      needsApproval,
+      isApprovalConfirmed,
+      quoteType: quote?.type,
+      isMessaging: quote?.isMessaging,
+      hasMessage: !!quote?.message,
+      executingSteps,
+      currentStepIndex,
+      totalSteps: quote?.totalSteps,
+      txHash,
+      isConfirmed,
+      isPendingTx,
+      isConfirming,
+    })
+
+    if (!quote || !address || !isConnected) {
+      console.log('[handleBridge] Early return: missing quote, address, or not connected')
+      return
+    }
 
     // If approval is needed and not confirmed, don't proceed
     if (needsApproval && quote.estimate?.approvalAddress && !isApprovalConfirmed) {
+      console.log('[handleBridge] Early return: approval needed but not confirmed')
       setQuoteError('Please approve the token first')
       return
     }
@@ -668,12 +773,20 @@ export default function BridgePage() {
       // Check if this is a messaging step (for Hyperliquid direct transfers)
       const isMessaging = quote.isMessaging || quote.type === 'message' || quote.message
 
+      console.log('[handleBridge] Processing bridge', {
+        isMessaging,
+        hasMessage: !!quote.message,
+        hasTransactionRequest: !!quote.transactionRequest,
+        isMultiStep: !!(quote.route && quote.route.steps && quote.route.steps.length > 1),
+      })
+
       if (isMessaging && quote.message) {
         // Handle messaging flow - sign EIP-712 message
         try {
           const message = quote.message
 
           // Sign the typed data
+          console.log('[handleBridge] Signing typed data for messaging step')
           const signature = await signTypedDataAsync({
             domain: message.domain,
             types: message.types,
@@ -681,16 +794,18 @@ export default function BridgePage() {
             message: message.message,
           })
 
-          console.log('Message signed:', signature)
+          console.log('[handleBridge] Message signed:', signature)
 
           // Relay the signed message
+          console.log('[handleBridge] Relaying message...')
           const relayResult = await relayMessage(quote.step, signature)
 
-          console.log('Message relayed:', relayResult)
+          console.log('[handleBridge] Message relayed:', relayResult)
 
           // For messaging, we don't get a txHash immediately
           // The relay endpoint returns a status that we can track
           if (relayResult.status || relayResult.txHash) {
+            console.log('[handleBridge] Messaging step completed successfully, setting success state')
             // Set a pseudo txHash for tracking (or use the relay result)
             // Note: For messaging, we might need to track differently
             setQuoteError(null)
@@ -699,10 +814,13 @@ export default function BridgePage() {
               fromToken: fromToken.symbol,
               toChain: toChain.name,
             })
+            setSuccessTxHash(relayResult.txHash || 'messaging-' + Date.now())
             // Note: We might need to poll for status instead of using txHash
+          } else {
+            console.warn('[handleBridge] Messaging step completed but no status or txHash in result:', relayResult)
           }
         } catch (messageError: any) {
-          console.error('Error signing/relaying message:', messageError)
+          console.error('[handleBridge] Error signing/relaying message:', messageError)
           setQuoteError(messageError?.message || 'Failed to sign or relay message')
           return
         }
@@ -717,8 +835,16 @@ export default function BridgePage() {
         // Check if this is a multi-step route (for Hyperliquid direct transfers)
         const isMultiStep = quote.route && quote.route.steps && quote.route.steps.length > 1
 
+        console.log('[handleBridge] Regular transaction flow', {
+          isMultiStep,
+          totalSteps: isMultiStep ? quote.route.steps.length : 1,
+          currentExecutingSteps: executingSteps,
+          currentStepIndex,
+        })
+
         // If multi-step, mark that we're executing steps
         if (isMultiStep) {
+          console.log('[handleBridge] Setting executingSteps=true, currentStepIndex=0 for multi-step route')
           setExecutingSteps(true)
           setCurrentStepIndex(0)
         }
@@ -802,6 +928,16 @@ export default function BridgePage() {
         setChainMismatch(false)
 
         // Execute the transaction using sendTransaction
+        console.log('[handleBridge] Sending transaction', {
+          to: txRequest.to,
+          value: txRequest.value,
+          hasData: !!txRequest.data,
+          gasLimit: txRequest.gasLimit,
+          chainId: txRequest.chainId,
+          isMultiStep,
+          executingSteps,
+          currentStepIndex,
+        })
         // Use EIP-1559 format (maxFeePerGas) instead of gasPrice
         sendTransaction({
           to: txRequest.to as `0x${string}`,
@@ -810,9 +946,14 @@ export default function BridgePage() {
           gas: txRequest.gasLimit ? BigInt(txRequest.gasLimit) : undefined,
           // Don't set gasPrice - let wagmi handle it with EIP-1559
         })
+        console.log('[handleBridge] Transaction sent, waiting for confirmation...', {
+          currentTxHash: txHash,
+          isPendingTx,
+          isConfirming,
+        })
       }
     } catch (error: any) {
-      console.error('Error executing bridge:', error)
+      console.error('[handleBridge] Error executing bridge:', error)
       setQuoteError(error?.message || 'Failed to execute bridge transaction')
     }
   }
@@ -1915,9 +2056,8 @@ export default function BridgePage() {
             )}
 
             {/* Bridge Button */}
-            <button
-              disabled={
-                !isConnected ||
+            {(() => {
+              const buttonDisabled = !isConnected ||
                 !amount ||
                 parseFloat(amount) <= 0 ||
                 loadingQuote ||
@@ -1932,11 +2072,8 @@ export default function BridgePage() {
                 (executingSteps && currentStepIndex > 0 && isSigningMessage) ||
                 // Require Hyperliquid address when Hyperliquid is selected
                 (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
-              }
-              onClick={handleBridge}
-              className="pill-button w-full text-lg py-5 mt-4"
-            >
-              {!isConnected
+              
+              const buttonText = !isConnected
                 ? 'Connect Wallet to Bridge'
                 : loadingQuote
                   ? 'Loading Quote...'
@@ -1958,8 +2095,42 @@ export default function BridgePage() {
                                 ? isConfirming ? 'Confirming...' : 'Processing...'
                                 : isConfirmed && !executingSteps
                                   ? 'Bridge Complete!'
-                                  : 'Bridge'}
-            </button>
+                                  : 'Bridge'
+              
+              console.log('[Button State]', {
+                buttonText,
+                buttonDisabled,
+                isConnected,
+                hasAmount: !!amount,
+                amountValue: amount,
+                loadingQuote,
+                hasQuote: !!quote,
+                needsApproval,
+                isApprovalConfirmed,
+                chainMismatch,
+                isPendingTx,
+                isConfirming,
+                isApproving,
+                isApprovalConfirming,
+                isSwitchingChain,
+                executingSteps,
+                currentStepIndex,
+                isSigningMessage,
+                isConfirmed,
+                txHash,
+                successTxHash,
+              })
+              
+              return (
+                <button
+                  disabled={buttonDisabled}
+                  onClick={handleBridge}
+                  className="pill-button w-full text-lg py-5 mt-4"
+                >
+                  {buttonText}
+                </button>
+              )
+            })()}
 
             {/* Approval Transaction Status */}
             {approvalHash && (
