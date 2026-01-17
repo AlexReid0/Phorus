@@ -4,6 +4,8 @@ const LIFI_API_BASE = 'https://li.quest/v1'
 // Get integrator ID from environment variable (for tracking in LiFi portal)
 // This should be set in .env.local as NEXT_PUBLIC_LIFI_INTEGRATOR_ID
 const LIFI_INTEGRATOR_ID = process.env.NEXT_PUBLIC_LIFI_INTEGRATOR_ID || 'phorus-2'
+// Integrator fee (10 bps = 0.1%)
+const LIFI_FEE = '0.001'
 
 // Import chain mappings from generated file
 import { KEY_TO_CHAIN_ID } from '../../scripts/generated-chains'
@@ -411,6 +413,7 @@ export async function getQuote(params: {
     // Add integrator ID for tracking in LiFi portal
     if (LIFI_INTEGRATOR_ID) {
       url.searchParams.set('integrator', LIFI_INTEGRATOR_ID)
+      url.searchParams.set('fee', LIFI_FEE)
     }
 
     const response = await fetch(url.toString())
@@ -561,7 +564,10 @@ export async function getRoutes(params: {
           // Enable messaging flow for Hyperliquid to support direct core account transfers
           // Also enable for routes to Arbitrum when the final destination is Hyperliquid
           executionType: (params.toChain === 'hpl' || params.toChain === 'hyperliquid' || params.toChain === 'arb') ? 'all' : undefined,
-          ...(LIFI_INTEGRATOR_ID && { integrator: LIFI_INTEGRATOR_ID }),
+          ...(LIFI_INTEGRATOR_ID && {
+            integrator: LIFI_INTEGRATOR_ID,
+            fee: parseFloat(LIFI_FEE)
+          }),
         },
       }),
     })
