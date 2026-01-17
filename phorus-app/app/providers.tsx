@@ -51,7 +51,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   if (!wagmiAdapter) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-deep-green text-white">
+      <div className="min-h-screen flex items-center justify-center bg-black text-white">
         <div className="text-center p-8">
           <h1 className="text-2xl font-serif mb-4">Configuration Error</h1>
           <p className="text-gray-400 mb-2">

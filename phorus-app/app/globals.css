@@ -6,13 +6,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap');
 
 :root {
-  --deep-green: #0a1f0a;
+  --black: #000000;
+  --black-light: #0a0a0a;
   --mint: #a8f5d0;
   --mint-dark: #7dd3a0;
 }
 
 body {
-  background: var(--deep-green);
+  background: var(--black);
   color: #ffffff;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -38,14 +39,14 @@ body {
 
 /* Bridge card */
 .bridge-card {
-  background: rgba(10, 31, 10, 0.9);
+  background: rgba(0, 0, 0, 0.9);
   border: 1px solid rgba(168, 245, 208, 0.2);
   backdrop-filter: blur(10px);
 }
 
 /* Input field */
 .bridge-input {
-  background: rgba(10, 31, 10, 0.6);
+  background: rgba(0, 0, 0, 0.6);
   border: 1px solid rgba(168, 245, 208, 0.15);
   color: #ffffff;
 }
@@ -53,11 +54,12 @@ body {
 .bridge-input:focus {
   outline: none;
   border-color: rgba(168, 245, 208, 0.4);
+  background: rgba(0, 0, 0, 0.8);
 }
 
 /* Select dropdown */
 .bridge-select {
-  background: rgba(10, 31, 10, 0.8);
+  background: rgba(0, 0, 0, 0.8);
   border: 1px solid rgba(168, 245, 208, 0.2);
   color: #ffffff;
   transition: all 0.2s ease;
@@ -65,19 +67,19 @@ body {
 
 .bridge-select:hover {
   border-color: rgba(168, 245, 208, 0.3);
-  background: rgba(10, 31, 10, 0.9);
+  background: rgba(0, 0, 0, 0.9);
 }
 
 .bridge-select:focus {
   outline: none;
   border-color: rgba(168, 245, 208, 0.4);
-  background: rgba(10, 31, 10, 0.95);
+  background: rgba(0, 0, 0, 0.95);
   box-shadow: 0 0 0 2px rgba(168, 245, 208, 0.1);
 }
 
 /* Pill button */
 .pill-button {
-  @apply px-8 py-4 rounded-full font-medium text-deep-green bg-mint hover:bg-mint-dark transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
+  @apply px-8 py-4 rounded-full font-medium text-black bg-mint hover:bg-mint-dark transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none;
 }
 
 /* Secondary button */

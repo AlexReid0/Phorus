@@ -9,10 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        'deep-green': '#0a1f0a',
+        'black': '#000000',
+        'black-light': '#0a0a0a',
         'mint': '#a8f5d0',
         'mint-dark': '#7dd3a0',
-        'card-bg': 'rgba(10, 31, 10, 0.8)',
+        'card-bg': 'rgba(0, 0, 0, 0.8)',
         'border-mint': 'rgba(168, 245, 208, 0.2)',
       },
       fontFamily: {

@@ -78,7 +78,7 @@ export default function ConnectWallet() {
       </button>
 
       {isDropdownOpen && (
-        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-mint/20 bg-deep-green/95 backdrop-blur-lg shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-64 rounded-xl border border-mint/20 bg-black/95 backdrop-blur-lg shadow-xl z-50 overflow-hidden">
           {/* Account Info */}
           <div className="p-4 border-b border-mint/10">
             <div className="flex items-center justify-between mb-2">

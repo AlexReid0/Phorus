@@ -399,7 +399,7 @@ export default function BridgePage() {
                     className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id} className="bg-deep-green">
+                      <option key={chain.id} value={chain.id} className="bg-black">
                         {chain.icon} {chain.name}
                       </option>
                     ))}
@@ -419,7 +419,7 @@ export default function BridgePage() {
                     className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol} className="bg-deep-green">
+                      <option key={token.symbol} value={token.symbol} className="bg-black">
                         {token.icon} {token.symbol}
                       </option>
                     ))}
@@ -482,7 +482,7 @@ export default function BridgePage() {
             <div className="flex justify-center -my-2">
               <button
                 onClick={handleSwapChains}
-                className="bg-deep-green border-2 border-mint/30 rounded-full p-3 hover:border-mint/50 transition-all hover:scale-110"
+                className="bg-black border-2 border-mint/30 rounded-full p-3 hover:border-mint/50 transition-all hover:scale-110"
               >
                 <svg className="w-6 h-6 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -510,7 +510,7 @@ export default function BridgePage() {
                     className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {chains.map((chain) => (
-                      <option key={chain.id} value={chain.id} className="bg-deep-green">
+                      <option key={chain.id} value={chain.id} className="bg-black">
                         {chain.icon} {chain.name}
                       </option>
                     ))}
@@ -530,7 +530,7 @@ export default function BridgePage() {
                     className="bridge-select w-full px-4 py-4 rounded-xl appearance-none cursor-pointer text-base font-medium transition-all hover:border-mint/30 focus:border-mint/40"
                   >
                     {tokens.map((token) => (
-                      <option key={token.symbol} value={token.symbol} className="bg-deep-green">
+                      <option key={token.symbol} value={token.symbol} className="bg-black">
                         {token.icon} {token.symbol}
                       </option>
                     ))}
