@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAccount, useBalance, useSendTransaction, useWaitForTransactionReceipt, useWriteContract, useSwitchChain, useSignTypedData } from 'wagmi'
 import { formatUnits, parseUnits, erc20Abi, isAddress, getAddress } from 'viem'
+import Link from 'next/link'
 import ConnectWallet from './components/ConnectWallet'
 import ChainIcon from './components/ChainIcon'
 import TokenIcon from './components/TokenIcon'
@@ -23,7 +24,7 @@ import { chainsArray } from '../scripts/generated-chains'
 
 // Popular tokens to show first (ordered by popularity)
 const POPULAR_TOKENS = [
-  'ETH', 'USDC', 'USDT', 'WBTC', 'DAI', 'WETH', 
+  'ETH', 'USDC', 'USDT', 'WBTC', 'DAI', 'WETH',
   'ARB', 'OP', 'LINK', 'UNI', 'AAVE', 'MATIC',
   'USDC.E', 'USDCX', 'USDT0', 'USDT+', 'USDTB',
   'FRAX', 'CRV', 'SNX', 'MKR', 'LDO', 'RETH',
@@ -44,22 +45,22 @@ const chains: Chain[] = chainsArray
     // Get index in popular chains (lower index = more popular)
     const aPopularIndex = POPULAR_CHAINS.indexOf(a.id)
     const bPopularIndex = POPULAR_CHAINS.indexOf(b.id)
-    
+
     // Both are popular - sort by popularity order
     if (aPopularIndex !== -1 && bPopularIndex !== -1) {
       return aPopularIndex - bPopularIndex
     }
-    
+
     // Only a is popular - a comes first
     if (aPopularIndex !== -1) {
       return -1
     }
-    
+
     // Only b is popular - b comes first
     if (bPopularIndex !== -1) {
       return 1
     }
-    
+
     // Neither is popular - sort alphabetically by name
     return a.name.localeCompare(b.name)
   })
@@ -5596,36 +5597,36 @@ const getTokensForChain = (chainId: string): Token[] => {
       { symbol: 'YAP', name: 'Yield Acceleration Protocol' },
     ],
   }
-  
+
   const tokens = chainTokens[chainId] || chainTokens.ethereum
-  
+
   // Sort tokens: popular first, then alphabetical
   return tokens.sort((a, b) => {
     const aIndex = POPULAR_TOKENS.indexOf(a.symbol)
     const bIndex = POPULAR_TOKENS.indexOf(b.symbol)
-    
+
     // Both are popular - maintain order in POPULAR_TOKENS
     if (aIndex !== -1 && bIndex !== -1) {
       return aIndex - bIndex
     }
-    
+
     // Only a is popular
     if (aIndex !== -1) {
       return -1
     }
-    
+
     // Only b is popular
     if (bIndex !== -1) {
       return 1
     }
-    
+
     // Neither is popular - sort alphabetically
     return a.symbol.localeCompare(b.symbol)
   })
 }
 export default function BridgePage() {
   const { address, isConnected, chain } = useAccount()
-  
+
   // Find Hyperliquid chain (hpl key = 1337)
   const hyperliquidChain = chains.find(c => (c as any).id === 'hpl') || chains[0]
   const [fromChain, setFromChain] = useState<Chain>(chains[0])
@@ -5634,7 +5635,7 @@ export default function BridgePage() {
   const [toToken, setToToken] = useState<Token>(getTokensForChain((hyperliquidChain as any).id || 'hpl')[0])
   const [amount, setAmount] = useState<string>('')
   const [hyperliquidAddress, setHyperliquidAddress] = useState<string>('')
-  
+
   // State for unified selector
   const [showFromSelector, setShowFromSelector] = useState(false)
   const [showToSelector, setShowToSelector] = useState(false)
@@ -5643,14 +5644,14 @@ export default function BridgePage() {
   const [toSearchQuery, setToSearchQuery] = useState('')
   const [fromChainFilter, setFromChainFilter] = useState<string | null>(null)
   const [toChainFilter, setToChainFilter] = useState<string | null>(null)
-  
+
   // Pagination state - how many tokens to show
   const [fromTokensToShow, setFromTokensToShow] = useState(15)
   const [toTokensToShow, setToTokensToShow] = useState(15)
-  
+
   // Get native balance
   const { data: nativeBalance } = useBalance({ address })
-  
+
   // Get token balance when a token is selected (not ETH)
   // Compute token address based on current chain and token symbol
   const tokenAddress = useMemo(() => {
@@ -5664,7 +5665,7 @@ export default function BridgePage() {
     }
     return address as `0x${string}` | undefined
   }, [fromChain.id, fromToken.symbol])
-  
+
   const { data: tokenBalance, isLoading: isLoadingTokenBalance } = useBalance({
     address,
     token: tokenAddress,
@@ -5672,7 +5673,7 @@ export default function BridgePage() {
       enabled: !!tokenAddress && isConnected && !!fromToken.symbol && tokenAddress !== '0x0000000000000000000000000000000000000000',
     },
   })
-  
+
   // Use token balance if available, otherwise native balance (only for ETH)
   // If token is not ETH and we don't have a valid token address or balance, show null/zero
   const balance = useMemo(() => {
@@ -5694,7 +5695,7 @@ export default function BridgePage() {
     // Fallback to native balance only if token query completed but returned no balance
     return nativeBalance
   }, [fromToken.symbol, tokenAddress, tokenBalance, nativeBalance, isLoadingTokenBalance])
-  
+
   // Quote state
   const [quote, setQuote] = useState<any>(null)
   const [loadingQuote, setLoadingQuote] = useState(false)
@@ -5704,7 +5705,7 @@ export default function BridgePage() {
   const [selectedStep, setSelectedStep] = useState<any>(null) // Selected step from route
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0) // Track which step we're on
   const [executingSteps, setExecutingSteps] = useState<boolean>(false) // Track if we're executing multi-step route
-  
+
   // Transaction state
   const { sendTransaction, data: txHash, isPending: isPendingTx, error: txError } = useSendTransaction()
   const { writeContract: writeApproval, data: approvalHash, isPending: isApproving } = useWriteContract()
@@ -5716,17 +5717,17 @@ export default function BridgePage() {
   const { isLoading: isApprovalConfirming, isSuccess: isApprovalConfirmed } = useWaitForTransactionReceipt({
     hash: approvalHash,
   })
-  
+
   // Approval state
   const [needsApproval, setNeedsApproval] = useState(false)
   const [chainMismatch, setChainMismatch] = useState(false)
-  
+
   // Store transaction details for success popup
   const [successDetails, setSuccessDetails] = useState<{
     fromToken: string
     toChain: string
   } | null>(null)
-  
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -5753,20 +5754,20 @@ export default function BridgePage() {
       // Bridge transaction confirmed, now proceed to next step (messaging)
       const nextStepIndex = currentStepIndex + 1
       const nextStep = selectedRoute.steps[nextStepIndex]
-      
+
       if (nextStep) {
         // Get transaction data for the next step
         getStepTransaction(nextStep).then((stepWithTx) => {
-          const isMessagingStep = stepWithTx.type === 'message' || 
-                                 stepWithTx.tool === 'hyperliquidSA' ||
-                                 stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
-                                 stepWithTx.message
-          
+          const isMessagingStep = stepWithTx.type === 'message' ||
+            stepWithTx.tool === 'hyperliquidSA' ||
+            stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
+            stepWithTx.message
+
           if (isMessagingStep && stepWithTx.message) {
             // Execute messaging step
             setCurrentStepIndex(nextStepIndex)
             setSelectedStep(nextStep)
-            
+
             // Sign and relay the message
             signTypedDataAsync({
               domain: stepWithTx.message.domain,
@@ -5780,7 +5781,7 @@ export default function BridgePage() {
               // All steps completed
               setExecutingSteps(false)
               setCurrentStepIndex(0)
-              
+
               // Show success
               setSuccessDetails({
                 fromToken: fromToken.symbol,
@@ -5818,7 +5819,7 @@ export default function BridgePage() {
         toChain: toChain.name,
       })
       setSuccessTxHash(txHash)
-      
+
       // Reset form after a short delay to show popup
       const timer = setTimeout(() => {
         setAmount('')
@@ -5833,7 +5834,7 @@ export default function BridgePage() {
         // Mark this txHash as dismissed so it won't show again
         setDismissedTxHashes(prev => new Set(prev).add(txHash))
       }, 5000) // Show popup for 5 seconds
-      
+
       return () => clearTimeout(timer)
     }
   }, [isConfirmed, txHash, fromToken.symbol, toChain.name, successTxHash, dismissedTxHashes, executingSteps])
@@ -5882,7 +5883,7 @@ export default function BridgePage() {
       setRoutes(null)
       setSelectedRoute(null)
       setSelectedStep(null)
-      
+
       try {
         // Validate and normalize the Hyperliquid address if provided
         let normalizedHyperliquidAddress: string | null = null
@@ -5898,11 +5899,11 @@ export default function BridgePage() {
             return
           }
         }
-        
+
         // Only use Hyperliquid direct flow when NOT using advanced bridge (showCustomToField)
         const isHyperliquidDirect = (toChain.id === 'hpl' || toChain.id === 'hyperliquid') && normalizedHyperliquidAddress && !showCustomToField
         let gotQuoteFromRoutes = false // Track if we got a quote from routes
-        
+
         // For Hyperliquid transfers, use LiFi's new one-step routes directly into HyperCore
         // This uses Relay and Gas.zip for intent-based flow - just sign and receive funds on HyperCore
         // Only when NOT using advanced bridge mode
@@ -5919,11 +5920,11 @@ export default function BridgePage() {
               toAddress: normalizedHyperliquidAddress!, // Pass the Hyperliquid core account address
               slippage: 0.03,
             })
-            
+
             if (routesData && routesData.routes && routesData.routes.length > 0) {
               console.log('Found one-step routes to HyperCore:', routesData.routes.length, 'routes')
               setRoutes(routesData)
-              
+
               // Find the best route - prefer one-step routes (single step)
               // Look for routes with Hyperliquid steps or single-step routes
               let bestRoute = routesData.routes.find((route: any) => {
@@ -5932,13 +5933,13 @@ export default function BridgePage() {
                   return true
                 }
                 // Or routes with Hyperliquid steps
-                return route.steps.some((step: any) => 
+                return route.steps.some((step: any) =>
                   step.tool === 'hyperliquidSA' ||
                   step.toolDetails?.key === 'hyperliquidSA' ||
                   step.action?.toChainId === 1337 // Hyperliquid chain ID
                 )
               })
-              
+
               // If no specific route, find one that executes on fromChain
               if (!bestRoute) {
                 bestRoute = routesData.routes.find((route: any) => {
@@ -5946,75 +5947,75 @@ export default function BridgePage() {
                   return firstStep && firstStep.action.fromChainId === CHAIN_IDS[fromChain.id]
                 })
               }
-              
+
               // Fallback to first route
               if (!bestRoute) {
                 bestRoute = routesData.routes[0]
               }
 
               if (bestRoute && bestRoute.steps && bestRoute.steps.length > 0) {
-                  setSelectedRoute(bestRoute)
-                  setCurrentStepIndex(0) // Start with first step
-                  const firstStep = bestRoute.steps[0]
-                  setSelectedStep(firstStep)
-                  
-                  // Get transaction data for the first step
-                  try {
-                    const stepWithTx = await getStepTransaction(firstStep)
-                    
-                    // Check if this is a messaging step (intent-based flow with Relay)
-                    const isMessagingStep = stepWithTx.type === 'message' || 
-                                           stepWithTx.tool === 'hyperliquidSA' ||
-                                           stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
-                                           stepWithTx.message
-                    
-                    if (isMessagingStep) {
-                      // For messaging steps (intent-based), use the step data directly
-                      setQuote({
-                        ...stepWithTx,
-                        isMessaging: true,
-                        route: bestRoute,
-                        step: firstStep,
-                        stepIndex: 0,
-                        totalSteps: bestRoute.steps.length,
-                      })
-                      gotQuoteFromRoutes = true
-                    } else if (stepWithTx.transactionRequest) {
-                      // For regular transaction steps (one-step bridge), use transactionRequest
-                      setQuote({
-                        ...stepWithTx,
-                        isMessaging: false,
-                        route: bestRoute,
-                        step: firstStep,
-                        stepIndex: 0,
-                        totalSteps: bestRoute.steps.length,
-                      })
-                      gotQuoteFromRoutes = true
-                    } else {
-                      // Fallback to simple quote
-                      throw new Error('No transaction data in step')
-                    }
-                  } catch (stepError: any) {
-                    console.error('Error getting step transaction:', stepError)
+                setSelectedRoute(bestRoute)
+                setCurrentStepIndex(0) // Start with first step
+                const firstStep = bestRoute.steps[0]
+                setSelectedStep(firstStep)
+
+                // Get transaction data for the first step
+                try {
+                  const stepWithTx = await getStepTransaction(firstStep)
+
+                  // Check if this is a messaging step (intent-based flow with Relay)
+                  const isMessagingStep = stepWithTx.type === 'message' ||
+                    stepWithTx.tool === 'hyperliquidSA' ||
+                    stepWithTx.toolDetails?.key === 'hyperliquidSA' ||
+                    stepWithTx.message
+
+                  if (isMessagingStep) {
+                    // For messaging steps (intent-based), use the step data directly
+                    setQuote({
+                      ...stepWithTx,
+                      isMessaging: true,
+                      route: bestRoute,
+                      step: firstStep,
+                      stepIndex: 0,
+                      totalSteps: bestRoute.steps.length,
+                    })
+                    gotQuoteFromRoutes = true
+                  } else if (stepWithTx.transactionRequest) {
+                    // For regular transaction steps (one-step bridge), use transactionRequest
+                    setQuote({
+                      ...stepWithTx,
+                      isMessaging: false,
+                      route: bestRoute,
+                      step: firstStep,
+                      stepIndex: 0,
+                      totalSteps: bestRoute.steps.length,
+                    })
+                    gotQuoteFromRoutes = true
+                  } else {
                     // Fallback to simple quote
-                    throw stepError
+                    throw new Error('No transaction data in step')
                   }
-                } else {
-                  throw new Error('No valid route found')
+                } catch (stepError: any) {
+                  console.error('Error getting step transaction:', stepError)
+                  // Fallback to simple quote
+                  throw stepError
                 }
               } else {
-                // No routes available - fall through to try simple quote API
-                console.log('No routes available in response:', routesData)
-                console.log('Falling back to simple quote API')
+                throw new Error('No valid route found')
               }
-            } catch (routesError: any) {
-              console.error('Routes error for Hyperliquid one-step transfer:', routesError)
-              // If routes API fails, try falling back to simple quote API
-              console.log('Routes API failed, falling back to simple quote API')
-              gotQuoteFromRoutes = false
+            } else {
+              // No routes available - fall through to try simple quote API
+              console.log('No routes available in response:', routesData)
+              console.log('Falling back to simple quote API')
             }
+          } catch (routesError: any) {
+            console.error('Routes error for Hyperliquid one-step transfer:', routesError)
+            // If routes API fails, try falling back to simple quote API
+            console.log('Routes API failed, falling back to simple quote API')
+            gotQuoteFromRoutes = false
           }
-        
+        }
+
         // Fall back to simple quote if routes didn't work or not using Hyperliquid direct
         // For Hyperliquid, require address to be entered (don't default to current wallet)
         // UNLESS using advanced bridge mode (showCustomToField)
@@ -6026,7 +6027,7 @@ export default function BridgePage() {
             setLoadingQuote(false)
             return
           }
-          
+
           try {
             const quoteData = await getQuote({
               fromChain: fromChain.id,
@@ -6038,12 +6039,12 @@ export default function BridgePage() {
               toAddress: isHyperliquidDirect ? normalizedHyperliquidAddress! : (showCustomToField ? address : address),
               slippage: 0.03, // 3% slippage
             })
-            
+
             if (quoteData) {
               // CRITICAL: Reject quote if it's not on the fromChain
               const requiredChainId = quoteData.transactionRequest?.chainId || quoteData.action?.fromChainId
               const expectedChainId = CHAIN_IDS[fromChain.id]
-              
+
               if (requiredChainId !== expectedChainId) {
                 const wrongChainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
                 setQuoteError(`❌ This route requires ${wrongChainName} instead of ${fromChain.name}. Please try again or select a different route.`)
@@ -6057,10 +6058,10 @@ export default function BridgePage() {
                 setLoadingQuote(false)
                 return
               }
-              
+
               setQuote(quoteData)
               setQuoteError(null)
-              
+
               // Check if approval is needed
               if (quoteData.estimate?.approvalAddress && fromToken.symbol !== 'ETH') {
                 setNeedsApproval(true)
@@ -6138,12 +6139,12 @@ export default function BridgePage() {
     try {
       // Check if this is a messaging step (for Hyperliquid direct transfers)
       const isMessaging = quote.isMessaging || quote.type === 'message' || quote.message
-      
+
       if (isMessaging && quote.message) {
         // Handle messaging flow - sign EIP-712 message
         try {
           const message = quote.message
-          
+
           // Sign the typed data
           const signature = await signTypedDataAsync({
             domain: message.domain,
@@ -6151,14 +6152,14 @@ export default function BridgePage() {
             primaryType: message.primaryType,
             message: message.message,
           })
-          
+
           console.log('Message signed:', signature)
-          
+
           // Relay the signed message
           const relayResult = await relayMessage(quote.step, signature)
-          
+
           console.log('Message relayed:', relayResult)
-          
+
           // For messaging, we don't get a txHash immediately
           // The relay endpoint returns a status that we can track
           if (relayResult.status || relayResult.txHash) {
@@ -6187,7 +6188,7 @@ export default function BridgePage() {
 
         // Check if this is a multi-step route (for Hyperliquid direct transfers)
         const isMultiStep = quote.route && quote.route.steps && quote.route.steps.length > 1
-        
+
         // If multi-step, mark that we're executing steps
         if (isMultiStep) {
           setExecutingSteps(true)
@@ -6234,7 +6235,7 @@ export default function BridgePage() {
           setChainMismatch(true)
           const chainName = Object.keys(CHAIN_IDS).find(key => CHAIN_IDS[key] === requiredChainId) || `Chain ${requiredChainId}`
           setQuoteError(`Please switch to ${chainName} (Chain ID: ${requiredChainId}) to execute this transaction`)
-          
+
           // Try to switch chain automatically
           if (switchChain && requiredChainId) {
             try {
@@ -6315,13 +6316,23 @@ export default function BridgePage() {
     <main className="min-h-screen relative overflow-x-hidden">
       {/* Fluid gradient background */}
       <div className="fluid-gradient" />
-      
+
       {/* Content */}
       <div className="relative z-10 min-h-screen px-4 py-8 md:py-12">
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
+            <div className="flex items-center gap-6">
+              <a href="https://phorus.xyz" className="hover:opacity-80 transition-opacity">
+                <h1 className="text-3xl font-serif font-light italic text-white">Phorus</h1>
+              </a>
+              <Link href="/leaderboard" className="text-gray-400 hover:text-white transition-colors text-sm font-medium flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Leaderboard
+              </Link>
+            </div>
             <ConnectWallet />
           </div>
 
@@ -6342,7 +6353,7 @@ export default function BridgePage() {
                   </span>
                 )}
               </div>
-              
+
               {/* Unified Chain/Token Selector */}
               <div className="relative selector-dropdown">
                 <button
@@ -6359,11 +6370,11 @@ export default function BridgePage() {
                       <div className="text-xs text-gray-400">{fromChain.name}</div>
                     </div>
                   </div>
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
-                
+
                 {showFromSelector && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
                     {/* Search Bar */}
@@ -6379,8 +6390,8 @@ export default function BridgePage() {
                         onClick={(e) => e.stopPropagation()}
                         className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                       />
-                  </div>
-                    
+                    </div>
+
                     {/* Chain Filter Buttons */}
                     <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
                       <button
@@ -6388,11 +6399,10 @@ export default function BridgePage() {
                           e.stopPropagation()
                           setFromChainFilter(null)
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                          fromChainFilter === null
-                            ? 'bg-mint/20 text-mint border border-mint/30'
-                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${fromChainFilter === null
+                          ? 'bg-mint/20 text-mint border border-mint/30'
+                          : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                          }`}
                       >
                         All
                       </button>
@@ -6403,20 +6413,19 @@ export default function BridgePage() {
                             e.stopPropagation()
                             setFromChainFilter(chain.id)
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
-                            fromChainFilter === chain.id
-                              ? 'bg-mint/20 text-mint border border-mint/30'
-                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                          }`}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${fromChainFilter === chain.id
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                            }`}
                         >
                           <ChainIcon chainId={chain.id} size={16} />
                           {chain.name}
                         </button>
                       ))}
-                </div>
+                    </div>
 
                     {/* Token List */}
-                    <div 
+                    <div
                       className="p-2 max-h-64 overflow-y-auto"
                       onScroll={(e) => {
                         const target = e.currentTarget
@@ -6432,42 +6441,42 @@ export default function BridgePage() {
                         const filteredChains = fromChainFilter
                           ? chains.filter(c => c.id === fromChainFilter)
                           : chains
-                        
+
                         const searchQueryLower = fromSearchQuery?.toLowerCase() || ''
                         const isPopularTokenSearch = fromSearchQuery && POPULAR_TOKENS.includes(fromSearchQuery.toUpperCase())
-                        const allTokens = filteredChains.flatMap(chain => 
+                        const allTokens = filteredChains.flatMap(chain =>
                           getTokensForChain(chain.id)
                             .filter(token => {
                               if (!fromSearchQuery) return true
-                              
+
                               // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
                               if (isPopularTokenSearch) {
                                 const tokenSymbolUpper = token.symbol.toUpperCase()
                                 const searchUpper = fromSearchQuery.toUpperCase()
-                                
+
                                 // If symbol exactly matches, include it (but we'll prioritize standard names)
                                 if (tokenSymbolUpper === searchUpper) {
                                   return true
                                 }
-                                
+
                                 // Otherwise, only include if symbol contains the query (not just name)
                                 return token.symbol.toLowerCase().includes(searchQueryLower)
                               }
-                              
+
                               // Normal search: match symbol, name, or chain
                               return token.symbol.toLowerCase().includes(searchQueryLower) ||
-                                     token.name.toLowerCase().includes(searchQueryLower) ||
-                                     chain.name.toLowerCase().includes(searchQueryLower)
+                                token.name.toLowerCase().includes(searchQueryLower) ||
+                                chain.name.toLowerCase().includes(searchQueryLower)
                             })
-                            .map(token => { 
+                            .map(token => {
                               const nameLower = token.name.toLowerCase()
-                              const isVaultToken = nameLower.includes('vault') || 
-                                                   nameLower.includes('pool') || 
-                                                   nameLower.includes('yield') ||
-                                                   nameLower.includes('strategy')
-                              
+                              const isVaultToken = nameLower.includes('vault') ||
+                                nameLower.includes('pool') ||
+                                nameLower.includes('yield') ||
+                                nameLower.includes('strategy')
+
                               return {
-                                ...token, 
+                                ...token,
                                 chain,
                                 isVaultToken,
                                 // Add match score for sorting: exact symbol match = highest priority
@@ -6475,47 +6484,47 @@ export default function BridgePage() {
                                   token.symbol.toLowerCase() === searchQueryLower ? (
                                     isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
                                   ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
-                                  token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
-                                  0 // Only name/chain match
+                                    token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
+                                      0 // Only name/chain match
                                 ) : 0
                               }
                             })
                         )
-                        
+
                         // Only remove duplicates when NOT searching - when searching, show all instances across chains
                         // When deduplicating, keep the token from the most popular chain
                         let uniqueTokens = fromSearchQuery
                           ? allTokens // Show all instances when searching
                           : (() => {
-                              const tokenMap = new Map<string, typeof allTokens[0]>()
-                              for (const token of allTokens) {
-                                const existing = tokenMap.get(token.symbol)
-                                if (!existing) {
+                            const tokenMap = new Map<string, typeof allTokens[0]>()
+                            for (const token of allTokens) {
+                              const existing = tokenMap.get(token.symbol)
+                              if (!existing) {
+                                tokenMap.set(token.symbol, token)
+                              } else {
+                                // If we already have this token, keep the one from the more popular chain
+                                const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
+                                const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
+                                if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
                                   tokenMap.set(token.symbol, token)
-                                } else {
-                                  // If we already have this token, keep the one from the more popular chain
-                                  const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
-                                  const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
-                                  if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
-                                    tokenMap.set(token.symbol, token)
-                                  }
                                 }
                               }
-                              return Array.from(tokenMap.values())
-                            })()
-                        
+                            }
+                            return Array.from(tokenMap.values())
+                          })()
+
                         // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
                         uniqueTokens = uniqueTokens.sort((a, b) => {
                           // First: prioritize by match score (exact symbol matches first)
                           if (a.matchScore !== b.matchScore) {
                             return b.matchScore - a.matchScore
                           }
-                          
+
                           const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
                           const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
                           const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
                           const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
-                          
+
                           // Both are popular tokens - maintain order
                           if (aTokenIndex !== -1 && bTokenIndex !== -1) {
                             if (aTokenIndex !== bTokenIndex) {
@@ -6529,25 +6538,25 @@ export default function BridgePage() {
                             if (bChainIndex !== -1) return 1
                             return a.chain.name.localeCompare(b.chain.name)
                           }
-                          
+
                           // Only a is popular
                           if (aTokenIndex !== -1) return -1
                           // Only b is popular
                           if (bTokenIndex !== -1) return 1
-                          
+
                           // Neither is popular - prioritize popular chains
                           if (aChainIndex !== -1 && bChainIndex !== -1) {
                             return aChainIndex - bChainIndex
                           }
                           if (aChainIndex !== -1) return -1
                           if (bChainIndex !== -1) return 1
-                          
+
                           // Sort by token symbol, then chain name
                           const symbolCompare = a.symbol.localeCompare(b.symbol)
                           if (symbolCompare !== 0) return symbolCompare
                           return a.chain.name.localeCompare(b.chain.name)
                         })
-                        
+
                         if (uniqueTokens.length === 0) {
                           return (
                             <div className="text-center py-8 text-gray-500 text-sm">
@@ -6555,67 +6564,66 @@ export default function BridgePage() {
                             </div>
                           )
                         }
-                        
+
                         // Paginate: only show first N tokens
                         const tokensToDisplay = uniqueTokens.slice(0, fromTokensToShow)
                         const hasMore = uniqueTokens.length > fromTokensToShow
-                        
+
                         return (
                           <>
                             {tokensToDisplay.map(({ symbol, name, chain: tokenChain }) => (
-                          <button
-                            key={`${tokenChain.id}-${symbol}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setFromChain(tokenChain)
-                              // Use the clicked token, but verify it exists on the chain
-                              const availableTokens = getTokensForChain(tokenChain.id)
-                              const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
-                              setFromToken(selectedToken)
-                              setFromSearchQuery('')
-                              setFromChainFilter(null)
-                              setShowFromSelector(false)
-                              setQuote(null)
-                              setQuoteError(null)
-                              if (isConnected && switchChain) {
-                                const chainId = CHAIN_IDS[tokenChain.id]
-                                if (chainId && chain?.id !== chainId) {
-                                  try {
-                                    try {
-                                      const result = switchChain({ chainId }) as any
-                                      if (result && typeof result === 'object' && typeof result.catch === 'function') {
-                                        result.catch(() => {})
+                              <button
+                                key={`${tokenChain.id}-${symbol}`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setFromChain(tokenChain)
+                                  // Use the clicked token, but verify it exists on the chain
+                                  const availableTokens = getTokensForChain(tokenChain.id)
+                                  const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
+                                  setFromToken(selectedToken)
+                                  setFromSearchQuery('')
+                                  setFromChainFilter(null)
+                                  setShowFromSelector(false)
+                                  setQuote(null)
+                                  setQuoteError(null)
+                                  if (isConnected && switchChain) {
+                                    const chainId = CHAIN_IDS[tokenChain.id]
+                                    if (chainId && chain?.id !== chainId) {
+                                      try {
+                                        try {
+                                          const result = switchChain({ chainId }) as any
+                                          if (result && typeof result === 'object' && typeof result.catch === 'function') {
+                                            result.catch(() => { })
+                                          }
+                                        } catch (err) {
+                                          // Ignore - chain switch might not return a promise
+                                        }
+                                      } catch (error) {
+                                        // Silently handle switch chain errors
+                                        console.error('Error switching chain:', error)
                                       }
-                                    } catch (err) {
-                                      // Ignore - chain switch might not return a promise
                                     }
-                                  } catch (error) {
-                                    // Silently handle switch chain errors
-                                    console.error('Error switching chain:', error)
                                   }
-                                }
-                              }
-                            }}
-                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
-                              fromToken.symbol === symbol && fromChain.id === tokenChain.id ? 'bg-mint/10' : ''
-                            }`}
-                          >
-                            <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
-                            <div className="flex-1 text-left">
-                              <div className="text-white font-medium">{symbol}</div>
-                              <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
-                            </div>
-                          </button>
+                                }}
+                                className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${fromToken.symbol === symbol && fromChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                                  }`}
+                              >
+                                <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
+                                <div className="flex-1 text-left">
+                                  <div className="text-white font-medium">{symbol}</div>
+                                  <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
+                                </div>
+                              </button>
                             ))}
                             {hasMore && (
                               <div className="text-center py-2 text-xs text-gray-500">
                                 Scroll for more tokens...
-                  </div>
+                              </div>
                             )}
                           </>
                         )
                       })()}
-                </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -6688,7 +6696,7 @@ export default function BridgePage() {
                   </span>
                 )}
               </div>
-              
+
               {/* Hyperliquid Core Account Address Input - Default when Hyperliquid is selected */}
               {((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') ? (
                 <>
@@ -6730,264 +6738,261 @@ export default function BridgePage() {
                       )}
                     </div>
                   )}
-                  
+
                   {/* Unified Chain/Token Selector - Only show when checkbox is checked */}
                   {showCustomToField && (
-                  <div className="relative selector-dropdown">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setShowToSelector(!showToSelector)
-                  }}
-                  className="bridge-select w-full px-4 py-4 rounded-xl flex items-center gap-3 cursor-pointer text-base font-medium transition-all hover:border-mint/30"
-                >
-                  <div className="flex items-center gap-3 flex-1">
-                    <TokenIcon symbol={toToken.symbol} size={32} chainId={toChain.id} />
-                    <div className="flex-1 text-left">
-                      <div className="text-white font-medium">{toToken.symbol}</div>
-                      <div className="text-xs text-gray-400">{toChain.name}</div>
-                    </div>
-                  </div>
-                    <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                </button>
-                
-                {showToSelector && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
-                    {/* Search Bar */}
-                    <div className="p-3 border-b border-mint/10">
-                      <input
-                        type="text"
-                        placeholder="Search token and chain"
-                        value={toSearchQuery}
-                        onChange={(e) => {
-                          e.stopPropagation()
-                          setToSearchQuery(e.target.value)
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
-                      />
-                  </div>
-                    
-                    {/* Chain Filter Buttons */}
-                    <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
+                    <div className="relative selector-dropdown">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          setToChainFilter(null)
+                          setShowToSelector(!showToSelector)
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                          toChainFilter === null
-                            ? 'bg-mint/20 text-mint border border-mint/30'
-                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                        }`}
+                        className="bridge-select w-full px-4 py-4 rounded-xl flex items-center gap-3 cursor-pointer text-base font-medium transition-all hover:border-mint/30"
                       >
-                        All
+                        <div className="flex items-center gap-3 flex-1">
+                          <TokenIcon symbol={toToken.symbol} size={32} chainId={toChain.id} />
+                          <div className="flex-1 text-left">
+                            <div className="text-white font-medium">{toToken.symbol}</div>
+                            <div className="text-xs text-gray-400">{toChain.name}</div>
+                          </div>
+                        </div>
+                        <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
                       </button>
-                      {chains.map((chain) => (
-                        <button
-                          key={chain.id}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setToChainFilter(chain.id)
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
-                            toChainFilter === chain.id
-                              ? 'bg-mint/20 text-mint border border-mint/30'
-                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                          }`}
-                        >
-                          <ChainIcon chainId={chain.id} size={16} />
-                          {chain.name}
-                        </button>
-                      ))}
-                </div>
 
-                    {/* Token List */}
-                    <div 
-                      className="p-2 max-h-64 overflow-y-auto"
-                      onScroll={(e) => {
-                        const target = e.currentTarget
-                        const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
-                        // Load more when within 50px of bottom
-                        if (scrollBottom < 50) {
-                          setToTokensToShow(prev => prev + 15)
-                        }
-                      }}
-                    >
-                      {(() => {
-                        // Filter tokens based on search and chain filter
-                        const filteredChains = toChainFilter
-                          ? chains.filter(c => c.id === toChainFilter)
-                          : chains
-                        
-                        const searchQueryLower = toSearchQuery?.toLowerCase() || ''
-                        const isPopularTokenSearch = toSearchQuery && POPULAR_TOKENS.includes(toSearchQuery.toUpperCase())
-                        const allTokens = filteredChains.flatMap(chain => 
-                          getTokensForChain(chain.id)
-                            .filter(token => {
-                              if (!toSearchQuery) return true
-                              
-                              // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
-                              if (isPopularTokenSearch) {
-                                const tokenSymbolUpper = token.symbol.toUpperCase()
-                                const searchUpper = toSearchQuery.toUpperCase()
-                                
-                                // If symbol exactly matches, include it (but we'll prioritize standard names)
-                                if (tokenSymbolUpper === searchUpper) {
-                                  return true
-                                }
-                                
-                                // Otherwise, only include if symbol contains the query (not just name)
-                                return token.symbol.toLowerCase().includes(searchQueryLower)
-                              }
-                              
-                              // Normal search: match symbol, name, or chain
-                              return token.symbol.toLowerCase().includes(searchQueryLower) ||
-                                     token.name.toLowerCase().includes(searchQueryLower) ||
-                                     chain.name.toLowerCase().includes(searchQueryLower)
-                            })
-                            .map(token => { 
-                              const nameLower = token.name.toLowerCase()
-                              const isVaultToken = nameLower.includes('vault') || 
-                                                   nameLower.includes('pool') || 
-                                                   nameLower.includes('yield') ||
-                                                   nameLower.includes('strategy')
-                              
-                              return {
-                                ...token, 
-                                chain,
-                                isVaultToken,
-                                // Add match score for sorting: exact symbol match = highest priority
-                                matchScore: toSearchQuery ? (
-                                  token.symbol.toLowerCase() === searchQueryLower ? (
-                                    isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
-                                  ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
-                                  token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
-                                  0 // Only name/chain match
-                                ) : 0
-                              }
-                            })
-                        )
-                        
-                        // Only remove duplicates when NOT searching - when searching, show all instances across chains
-                        // When deduplicating, keep the token from the most popular chain
-                        let uniqueTokens = toSearchQuery
-                          ? allTokens // Show all instances when searching
-                          : (() => {
-                              const tokenMap = new Map<string, typeof allTokens[0]>()
-                              for (const token of allTokens) {
-                                const existing = tokenMap.get(token.symbol)
-                                if (!existing) {
-                                  tokenMap.set(token.symbol, token)
-                                } else {
-                                  // If we already have this token, keep the one from the more popular chain
-                                  const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
-                                  const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
-                                  if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
-                                    tokenMap.set(token.symbol, token)
-                                  }
-                                }
-                              }
-                              return Array.from(tokenMap.values())
-                            })()
-                        
-                        // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
-                        uniqueTokens = uniqueTokens.sort((a, b) => {
-                          // First: prioritize by match score (exact symbol matches first)
-                          if (a.matchScore !== b.matchScore) {
-                            return b.matchScore - a.matchScore
-                          }
-                          
-                          const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
-                          const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
-                          const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
-                          const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
-                          
-                          // Both are popular tokens - maintain order
-                          if (aTokenIndex !== -1 && bTokenIndex !== -1) {
-                            if (aTokenIndex !== bTokenIndex) {
-                              return aTokenIndex - bTokenIndex
-                            }
-                            // Same token, prioritize popular chains
-                            if (aChainIndex !== -1 && bChainIndex !== -1) {
-                              return aChainIndex - bChainIndex
-                            }
-                            if (aChainIndex !== -1) return -1
-                            if (bChainIndex !== -1) return 1
-                            return a.chain.name.localeCompare(b.chain.name)
-                          }
-                          
-                          // Only a is popular
-                          if (aTokenIndex !== -1) return -1
-                          // Only b is popular
-                          if (bTokenIndex !== -1) return 1
-                          
-                          // Neither is popular - prioritize popular chains
-                          if (aChainIndex !== -1 && bChainIndex !== -1) {
-                            return aChainIndex - bChainIndex
-                          }
-                          if (aChainIndex !== -1) return -1
-                          if (bChainIndex !== -1) return 1
-                          
-                          // Sort by token symbol, then chain name
-                          const symbolCompare = a.symbol.localeCompare(b.symbol)
-                          if (symbolCompare !== 0) return symbolCompare
-                          return a.chain.name.localeCompare(b.chain.name)
-                        })
-                        
-                        if (uniqueTokens.length === 0) {
-                          return (
-                            <div className="text-center py-8 text-gray-500 text-sm">
-                              No tokens found
-                            </div>
-                          )
-                        }
-                        
-                        // Paginate: only show first N tokens
-                        const tokensToDisplay = uniqueTokens.slice(0, toTokensToShow)
-                        const hasMore = uniqueTokens.length > toTokensToShow
-                        
-                        return (
-                          <>
-                            {tokensToDisplay.map(({ symbol, name, chain: tokenChain }) => (
-                          <button
-                            key={`${tokenChain.id}-${symbol}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setToChain(tokenChain)
-                              // Ensure token exists on the selected chain
-                              const availableTokens = getTokensForChain(tokenChain.id)
-                              const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
-                              setToToken(selectedToken)
-                              setToSearchQuery('')
-                              setToChainFilter(null)
-                              setShowToSelector(false)
-                            }}
-                            className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
-                              toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
-                            }`}
-                          >
-                            <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
-                            <div className="flex-1 text-left">
-                              <div className="text-white font-medium">{symbol}</div>
-                              <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
-                            </div>
-                          </button>
+                      {showToSelector && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
+                          {/* Search Bar */}
+                          <div className="p-3 border-b border-mint/10">
+                            <input
+                              type="text"
+                              placeholder="Search token and chain"
+                              value={toSearchQuery}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                setToSearchQuery(e.target.value)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
+                            />
+                          </div>
+
+                          {/* Chain Filter Buttons */}
+                          <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setToChainFilter(null)
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${toChainFilter === null
+                                ? 'bg-mint/20 text-mint border border-mint/30'
+                                : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                                }`}
+                            >
+                              All
+                            </button>
+                            {chains.map((chain) => (
+                              <button
+                                key={chain.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setToChainFilter(chain.id)
+                                }}
+                                className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${toChainFilter === chain.id
+                                  ? 'bg-mint/20 text-mint border border-mint/30'
+                                  : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                                  }`}
+                              >
+                                <ChainIcon chainId={chain.id} size={16} />
+                                {chain.name}
+                              </button>
                             ))}
-                            {hasMore && (
-                              <div className="text-center py-2 text-xs text-gray-500">
-                                Scroll for more tokens...
-                  </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                </div>
-              </div>
-                )}
-              </div>
+                          </div>
+
+                          {/* Token List */}
+                          <div
+                            className="p-2 max-h-64 overflow-y-auto"
+                            onScroll={(e) => {
+                              const target = e.currentTarget
+                              const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+                              // Load more when within 50px of bottom
+                              if (scrollBottom < 50) {
+                                setToTokensToShow(prev => prev + 15)
+                              }
+                            }}
+                          >
+                            {(() => {
+                              // Filter tokens based on search and chain filter
+                              const filteredChains = toChainFilter
+                                ? chains.filter(c => c.id === toChainFilter)
+                                : chains
+
+                              const searchQueryLower = toSearchQuery?.toLowerCase() || ''
+                              const isPopularTokenSearch = toSearchQuery && POPULAR_TOKENS.includes(toSearchQuery.toUpperCase())
+                              const allTokens = filteredChains.flatMap(chain =>
+                                getTokensForChain(chain.id)
+                                  .filter(token => {
+                                    if (!toSearchQuery) return true
+
+                                    // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
+                                    if (isPopularTokenSearch) {
+                                      const tokenSymbolUpper = token.symbol.toUpperCase()
+                                      const searchUpper = toSearchQuery.toUpperCase()
+
+                                      // If symbol exactly matches, include it (but we'll prioritize standard names)
+                                      if (tokenSymbolUpper === searchUpper) {
+                                        return true
+                                      }
+
+                                      // Otherwise, only include if symbol contains the query (not just name)
+                                      return token.symbol.toLowerCase().includes(searchQueryLower)
+                                    }
+
+                                    // Normal search: match symbol, name, or chain
+                                    return token.symbol.toLowerCase().includes(searchQueryLower) ||
+                                      token.name.toLowerCase().includes(searchQueryLower) ||
+                                      chain.name.toLowerCase().includes(searchQueryLower)
+                                  })
+                                  .map(token => {
+                                    const nameLower = token.name.toLowerCase()
+                                    const isVaultToken = nameLower.includes('vault') ||
+                                      nameLower.includes('pool') ||
+                                      nameLower.includes('yield') ||
+                                      nameLower.includes('strategy')
+
+                                    return {
+                                      ...token,
+                                      chain,
+                                      isVaultToken,
+                                      // Add match score for sorting: exact symbol match = highest priority
+                                      matchScore: toSearchQuery ? (
+                                        token.symbol.toLowerCase() === searchQueryLower ? (
+                                          isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
+                                        ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
+                                          token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
+                                            0 // Only name/chain match
+                                      ) : 0
+                                    }
+                                  })
+                              )
+
+                              // Only remove duplicates when NOT searching - when searching, show all instances across chains
+                              // When deduplicating, keep the token from the most popular chain
+                              let uniqueTokens = toSearchQuery
+                                ? allTokens // Show all instances when searching
+                                : (() => {
+                                  const tokenMap = new Map<string, typeof allTokens[0]>()
+                                  for (const token of allTokens) {
+                                    const existing = tokenMap.get(token.symbol)
+                                    if (!existing) {
+                                      tokenMap.set(token.symbol, token)
+                                    } else {
+                                      // If we already have this token, keep the one from the more popular chain
+                                      const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
+                                      const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
+                                      if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
+                                        tokenMap.set(token.symbol, token)
+                                      }
+                                    }
+                                  }
+                                  return Array.from(tokenMap.values())
+                                })()
+
+                              // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
+                              uniqueTokens = uniqueTokens.sort((a, b) => {
+                                // First: prioritize by match score (exact symbol matches first)
+                                if (a.matchScore !== b.matchScore) {
+                                  return b.matchScore - a.matchScore
+                                }
+
+                                const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
+                                const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
+                                const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
+                                const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
+
+                                // Both are popular tokens - maintain order
+                                if (aTokenIndex !== -1 && bTokenIndex !== -1) {
+                                  if (aTokenIndex !== bTokenIndex) {
+                                    return aTokenIndex - bTokenIndex
+                                  }
+                                  // Same token, prioritize popular chains
+                                  if (aChainIndex !== -1 && bChainIndex !== -1) {
+                                    return aChainIndex - bChainIndex
+                                  }
+                                  if (aChainIndex !== -1) return -1
+                                  if (bChainIndex !== -1) return 1
+                                  return a.chain.name.localeCompare(b.chain.name)
+                                }
+
+                                // Only a is popular
+                                if (aTokenIndex !== -1) return -1
+                                // Only b is popular
+                                if (bTokenIndex !== -1) return 1
+
+                                // Neither is popular - prioritize popular chains
+                                if (aChainIndex !== -1 && bChainIndex !== -1) {
+                                  return aChainIndex - bChainIndex
+                                }
+                                if (aChainIndex !== -1) return -1
+                                if (bChainIndex !== -1) return 1
+
+                                // Sort by token symbol, then chain name
+                                const symbolCompare = a.symbol.localeCompare(b.symbol)
+                                if (symbolCompare !== 0) return symbolCompare
+                                return a.chain.name.localeCompare(b.chain.name)
+                              })
+
+                              if (uniqueTokens.length === 0) {
+                                return (
+                                  <div className="text-center py-8 text-gray-500 text-sm">
+                                    No tokens found
+                                  </div>
+                                )
+                              }
+
+                              // Paginate: only show first N tokens
+                              const tokensToDisplay = uniqueTokens.slice(0, toTokensToShow)
+                              const hasMore = uniqueTokens.length > toTokensToShow
+
+                              return (
+                                <>
+                                  {tokensToDisplay.map(({ symbol, name, chain: tokenChain }) => (
+                                    <button
+                                      key={`${tokenChain.id}-${symbol}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setToChain(tokenChain)
+                                        // Ensure token exists on the selected chain
+                                        const availableTokens = getTokensForChain(tokenChain.id)
+                                        const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
+                                        setToToken(selectedToken)
+                                        setToSearchQuery('')
+                                        setToChainFilter(null)
+                                        setShowToSelector(false)
+                                      }}
+                                      className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                                        }`}
+                                    >
+                                      <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
+                                      <div className="flex-1 text-left">
+                                        <div className="text-white font-medium">{symbol}</div>
+                                        <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
+                                      </div>
+                                    </button>
+                                  ))}
+                                  {hasMore && (
+                                    <div className="text-center py-2 text-xs text-gray-500">
+                                      Scroll for more tokens...
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </>
               ) : (
@@ -7011,13 +7016,13 @@ export default function BridgePage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  
+
                   {showToSelector && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-black border border-mint/20 rounded-xl overflow-hidden z-50 max-h-96 flex flex-col">
                       {/* Search Bar */}
                       <div className="p-3 border-b border-mint/10">
-                  <input
-                    type="text"
+                        <input
+                          type="text"
                           placeholder="Search token and chain"
                           value={toSearchQuery}
                           onChange={(e) => {
@@ -7028,7 +7033,7 @@ export default function BridgePage() {
                           className="w-full px-4 py-2 bg-black border border-mint/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-mint/40"
                         />
                       </div>
-                      
+
                       {/* Chain Filter Buttons */}
                       <div className="p-2 flex gap-2 overflow-x-auto border-b border-mint/10 scrollbar-hide">
                         <button
@@ -7036,11 +7041,10 @@ export default function BridgePage() {
                             e.stopPropagation()
                             setToChainFilter(null)
                           }}
-                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-                            toChainFilter === null
-                              ? 'bg-mint/20 text-mint border border-mint/30'
-                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                          }`}
+                          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${toChainFilter === null
+                            ? 'bg-mint/20 text-mint border border-mint/30'
+                            : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                            }`}
                         >
                           All
                         </button>
@@ -7051,20 +7055,19 @@ export default function BridgePage() {
                               e.stopPropagation()
                               setToChainFilter(chain.id)
                             }}
-                            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${
-                              toChainFilter === chain.id
-                                ? 'bg-mint/20 text-mint border border-mint/30'
-                                : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap flex items-center gap-2 transition-colors ${toChainFilter === chain.id
+                              ? 'bg-mint/20 text-mint border border-mint/30'
+                              : 'bg-black/50 text-gray-400 border border-mint/10 hover:border-mint/20'
+                              }`}
                           >
                             <ChainIcon chainId={chain.id} size={16} />
                             {chain.name}
                           </button>
                         ))}
                       </div>
-                      
+
                       {/* Token List */}
-                      <div 
+                      <div
                         className="p-2 max-h-64 overflow-y-auto"
                         onScroll={(e) => {
                           const target = e.currentTarget
@@ -7080,42 +7083,42 @@ export default function BridgePage() {
                           const filteredChains = toChainFilter
                             ? chains.filter(c => c.id === toChainFilter)
                             : chains
-                          
+
                           const searchQueryLower = toSearchQuery?.toLowerCase() || ''
                           const isPopularTokenSearch = toSearchQuery && POPULAR_TOKENS.includes(toSearchQuery.toUpperCase())
-                          const allTokens = filteredChains.flatMap(chain => 
+                          const allTokens = filteredChains.flatMap(chain =>
                             getTokensForChain(chain.id)
                               .filter(token => {
                                 if (!toSearchQuery) return true
-                                
+
                                 // If searching for a popular token, filter out vault/pool tokens unless symbol exactly matches
                                 if (isPopularTokenSearch) {
                                   const tokenSymbolUpper = token.symbol.toUpperCase()
                                   const searchUpper = toSearchQuery.toUpperCase()
-                                  
+
                                   // If symbol exactly matches, include it (but we'll prioritize standard names)
                                   if (tokenSymbolUpper === searchUpper) {
                                     return true
                                   }
-                                  
+
                                   // Otherwise, only include if symbol contains the query (not just name)
                                   return token.symbol.toLowerCase().includes(searchQueryLower)
                                 }
-                                
+
                                 // Normal search: match symbol, name, or chain
                                 return token.symbol.toLowerCase().includes(searchQueryLower) ||
-                                       token.name.toLowerCase().includes(searchQueryLower) ||
-                                       chain.name.toLowerCase().includes(searchQueryLower)
+                                  token.name.toLowerCase().includes(searchQueryLower) ||
+                                  chain.name.toLowerCase().includes(searchQueryLower)
                               })
-                              .map(token => { 
+                              .map(token => {
                                 const nameLower = token.name.toLowerCase()
-                                const isVaultToken = nameLower.includes('vault') || 
-                                                     nameLower.includes('pool') || 
-                                                     nameLower.includes('yield') ||
-                                                     nameLower.includes('strategy')
-                                
+                                const isVaultToken = nameLower.includes('vault') ||
+                                  nameLower.includes('pool') ||
+                                  nameLower.includes('yield') ||
+                                  nameLower.includes('strategy')
+
                                 return {
-                                  ...token, 
+                                  ...token,
                                   chain,
                                   isVaultToken,
                                   // Add match score for sorting: exact symbol match = highest priority
@@ -7123,47 +7126,47 @@ export default function BridgePage() {
                                     token.symbol.toLowerCase() === searchQueryLower ? (
                                       isVaultToken ? 2.5 : 3 // Exact symbol match, but vault tokens get lower score
                                     ) : token.symbol.toLowerCase().startsWith(searchQueryLower) ? 2 : // Symbol starts with query
-                                    token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
-                                    0 // Only name/chain match
+                                      token.symbol.toLowerCase().includes(searchQueryLower) ? 1 : // Symbol contains query
+                                        0 // Only name/chain match
                                   ) : 0
                                 }
                               })
                           )
-                          
+
                           // Only remove duplicates when NOT searching - when searching, show all instances across chains
                           // When deduplicating, keep the token from the most popular chain
                           let uniqueTokens = toSearchQuery
                             ? allTokens // Show all instances when searching
                             : (() => {
-                                const tokenMap = new Map<string, typeof allTokens[0]>()
-                                for (const token of allTokens) {
-                                  const existing = tokenMap.get(token.symbol)
-                                  if (!existing) {
+                              const tokenMap = new Map<string, typeof allTokens[0]>()
+                              for (const token of allTokens) {
+                                const existing = tokenMap.get(token.symbol)
+                                if (!existing) {
+                                  tokenMap.set(token.symbol, token)
+                                } else {
+                                  // If we already have this token, keep the one from the more popular chain
+                                  const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
+                                  const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
+                                  if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
                                     tokenMap.set(token.symbol, token)
-                                  } else {
-                                    // If we already have this token, keep the one from the more popular chain
-                                    const existingChainIndex = POPULAR_CHAINS.indexOf(existing.chain.id)
-                                    const newChainIndex = POPULAR_CHAINS.indexOf(token.chain.id)
-                                    if (newChainIndex !== -1 && (existingChainIndex === -1 || newChainIndex < existingChainIndex)) {
-                                      tokenMap.set(token.symbol, token)
-                                    }
                                   }
                                 }
-                                return Array.from(tokenMap.values())
-                              })()
-                          
+                              }
+                              return Array.from(tokenMap.values())
+                            })()
+
                           // Sort tokens: match score first, then popular tokens, then popular chains, then alphabetically
                           uniqueTokens = uniqueTokens.sort((a, b) => {
                             // First: prioritize by match score (exact symbol matches first)
                             if (a.matchScore !== b.matchScore) {
                               return b.matchScore - a.matchScore
                             }
-                            
+
                             const aTokenIndex = POPULAR_TOKENS.indexOf(a.symbol)
                             const bTokenIndex = POPULAR_TOKENS.indexOf(b.symbol)
                             const aChainIndex = POPULAR_CHAINS.indexOf(a.chain.id)
                             const bChainIndex = POPULAR_CHAINS.indexOf(b.chain.id)
-                            
+
                             // Both are popular tokens - maintain order
                             if (aTokenIndex !== -1 && bTokenIndex !== -1) {
                               if (aTokenIndex !== bTokenIndex) {
@@ -7177,25 +7180,25 @@ export default function BridgePage() {
                               if (bChainIndex !== -1) return 1
                               return a.chain.name.localeCompare(b.chain.name)
                             }
-                            
+
                             // Only a is popular
                             if (aTokenIndex !== -1) return -1
                             // Only b is popular
                             if (bTokenIndex !== -1) return 1
-                            
+
                             // Neither is popular - prioritize popular chains
                             if (aChainIndex !== -1 && bChainIndex !== -1) {
                               return aChainIndex - bChainIndex
                             }
                             if (aChainIndex !== -1) return -1
                             if (bChainIndex !== -1) return 1
-                            
+
                             // Sort by token symbol, then chain name
                             const symbolCompare = a.symbol.localeCompare(b.symbol)
                             if (symbolCompare !== 0) return symbolCompare
                             return a.chain.name.localeCompare(b.chain.name)
                           })
-                          
+
                           if (uniqueTokens.length === 0) {
                             return (
                               <div className="text-center py-8 text-gray-500 text-sm">
@@ -7203,37 +7206,36 @@ export default function BridgePage() {
                               </div>
                             )
                           }
-                          
+
                           // Paginate: only show first N tokens
                           const tokensToDisplay = uniqueTokens.slice(0, toTokensToShow)
                           const hasMore = uniqueTokens.length > toTokensToShow
-                          
+
                           return (
                             <>
                               {tokensToDisplay.map(({ symbol, name, chain: tokenChain }) => (
-                            <button
-                              key={`${tokenChain.id}-${symbol}`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setToChain(tokenChain)
-                                // Ensure token exists on the selected chain
-                                const availableTokens = getTokensForChain(tokenChain.id)
-                                const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
-                                setToToken(selectedToken)
-                                setToSearchQuery('')
-                                setToChainFilter(null)
-                                setShowToSelector(false)
-                              }}
-                              className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${
-                                toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
-                              }`}
-                            >
-                              <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
-                              <div className="flex-1 text-left">
-                                <div className="text-white font-medium">{symbol}</div>
-                                <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
-                              </div>
-                            </button>
+                                <button
+                                  key={`${tokenChain.id}-${symbol}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setToChain(tokenChain)
+                                    // Ensure token exists on the selected chain
+                                    const availableTokens = getTokensForChain(tokenChain.id)
+                                    const selectedToken = availableTokens.find(t => t.symbol === symbol) || availableTokens[0]
+                                    setToToken(selectedToken)
+                                    setToSearchQuery('')
+                                    setToChainFilter(null)
+                                    setShowToSelector(false)
+                                  }}
+                                  className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-mint/10 rounded-lg transition-colors ${toToken.symbol === symbol && toChain.id === tokenChain.id ? 'bg-mint/10' : ''
+                                    }`}
+                                >
+                                  <TokenIcon symbol={symbol} size={24} chainId={tokenChain.id} />
+                                  <div className="flex-1 text-left">
+                                    <div className="text-white font-medium">{symbol}</div>
+                                    <div className="text-xs text-gray-400">{name} • {tokenChain.name}</div>
+                                  </div>
+                                </button>
                               ))}
                               {hasMore && (
                                 <div className="text-center py-2 text-xs text-gray-500">
@@ -7251,7 +7253,7 @@ export default function BridgePage() {
 
               {/* Output Amount */}
               <div className="relative">
-              <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
+                <div className="bridge-input w-full px-4 py-5 rounded-xl text-2xl font-semibold text-gray-400">
                   {loadingQuote ? (
                     <span className="text-sm">Loading quote...</span>
                   ) : quoteError ? (
@@ -7300,7 +7302,7 @@ export default function BridgePage() {
               <div className="flex justify-between text-sm">
                 <span className="text-gray-400">Estimated Time</span>
                 <span className="text-white">
-                  {quote?.estimate?.executionDuration 
+                  {quote?.estimate?.executionDuration
                     ? `~${Math.ceil(quote.estimate.executionDuration / 60)} min`
                     : '~2 min'}
                 </span>
@@ -7316,28 +7318,28 @@ export default function BridgePage() {
             </div>
 
             {/* Approval Button (if needed) - only show when actionable */}
-            {needsApproval && 
-             quote?.estimate.approvalAddress && 
-             !isApprovalConfirmed && 
-             isConnected && 
-             quote && 
-             !isApproving && 
-             !isApprovalConfirming && 
-             !loadingQuote && (
-              <button
-                onClick={handleApproval}
-                className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
-              >
-                {`Approve ${fromToken.symbol}`}
-              </button>
-            )}
+            {needsApproval &&
+              quote?.estimate.approvalAddress &&
+              !isApprovalConfirmed &&
+              isConnected &&
+              quote &&
+              !isApproving &&
+              !isApprovalConfirming &&
+              !loadingQuote && (
+                <button
+                  onClick={handleApproval}
+                  className="pill-button w-full text-lg py-5 mt-4 bg-yellow-500 hover:bg-yellow-600"
+                >
+                  {`Approve ${fromToken.symbol}`}
+                </button>
+              )}
 
             {/* Chain Mismatch Warning */}
             {chainMismatch && quote?.transactionRequest && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <div className="text-sm text-yellow-400 mb-2">Chain Mismatch</div>
                 <div className="text-xs text-yellow-300">
-                  This transaction needs to be executed on {fromChain.name}. 
+                  This transaction needs to be executed on {fromChain.name}.
                   {switchChain && (
                     <button
                       onClick={() => {
@@ -7378,8 +7380,8 @@ export default function BridgePage() {
                   {currentStepIndex === 0 && isConfirmed
                     ? 'Transaction confirmed. Funds arriving on HyperCore...'
                     : currentStepIndex === 0
-                    ? 'Executing one-step route to HyperCore...'
-                    : 'Completing transfer to HyperCore account...'}
+                      ? 'Executing one-step route to HyperCore...'
+                      : 'Completing transfer to HyperCore account...'}
                 </div>
               </div>
             )}
@@ -7387,14 +7389,14 @@ export default function BridgePage() {
             {/* Bridge Button */}
             <button
               disabled={
-                !isConnected || 
-                !amount || 
-                parseFloat(amount) <= 0 || 
-                loadingQuote || 
-                !quote || 
+                !isConnected ||
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                loadingQuote ||
+                !quote ||
                 (needsApproval && !isApprovalConfirmed) ||
                 chainMismatch ||
-                isPendingTx || 
+                isPendingTx ||
                 isConfirming ||
                 isApproving ||
                 isApprovalConfirming ||
@@ -7406,37 +7408,37 @@ export default function BridgePage() {
               onClick={handleBridge}
               className="pill-button w-full text-lg py-5 mt-4"
             >
-              {!isConnected 
-                ? 'Connect Wallet to Bridge' 
-                : loadingQuote 
-                ? 'Loading Quote...' 
-                : !quote 
-                ? (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
-                  ? 'Enter Hyperliquid Address'
-                  : 'Enter Amount'
-                : chainMismatch
-                ? 'Switch Chain First'
-                : needsApproval && !isApprovalConfirmed
-                ? 'Approve Token First'
-                : isSwitchingChain
-                ? 'Switching Chain...'
-                : executingSteps && currentStepIndex > 0 && isSigningMessage
-                ? 'Signing Message...'
-                : executingSteps && currentStepIndex > 0
-                ? 'Executing Messaging Step...'
-                : isPendingTx || isConfirming
-                ? isConfirming ? 'Confirming...' : 'Processing...'
-                : isConfirmed && !executingSteps
-                ? 'Bridge Complete!'
-                : 'Bridge'}
+              {!isConnected
+                ? 'Connect Wallet to Bridge'
+                : loadingQuote
+                  ? 'Loading Quote...'
+                  : !quote
+                    ? (((toChain as any).id === 'hpl' || (toChain as any).id === 'hyperliquid') && !showCustomToField && (!hyperliquidAddress || !isAddress(hyperliquidAddress)))
+                      ? 'Enter Hyperliquid Address'
+                      : 'Enter Amount'
+                    : chainMismatch
+                      ? 'Switch Chain First'
+                      : needsApproval && !isApprovalConfirmed
+                        ? 'Approve Token First'
+                        : isSwitchingChain
+                          ? 'Switching Chain...'
+                          : executingSteps && currentStepIndex > 0 && isSigningMessage
+                            ? 'Signing Message...'
+                            : executingSteps && currentStepIndex > 0
+                              ? 'Executing Messaging Step...'
+                              : isPendingTx || isConfirming
+                                ? isConfirming ? 'Confirming...' : 'Processing...'
+                                : isConfirmed && !executingSteps
+                                  ? 'Bridge Complete!'
+                                  : 'Bridge'}
             </button>
-            
+
             {/* Approval Transaction Status */}
             {approvalHash && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                 <div className="text-sm text-yellow-400 mb-2">
                   {isApprovalConfirmed ? 'Approval Confirmed' : 'Approval Submitted'}
-          </div>
+                </div>
                 <a
                   href={`${chain?.blockExplorers?.default?.url}/tx/${approvalHash}`}
                   target="_blank"
@@ -7447,7 +7449,7 @@ export default function BridgePage() {
                 </a>
               </div>
             )}
-            
+
             {/* Transaction Status */}
             {txHash && (
               <div className="mt-4 p-4 bg-mint/10 border border-mint/30 rounded-xl">
@@ -7462,7 +7464,7 @@ export default function BridgePage() {
                 </a>
               </div>
             )}
-            
+
             {txError && (
               <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
                 <div className="text-sm text-red-400">Transaction Error</div>
