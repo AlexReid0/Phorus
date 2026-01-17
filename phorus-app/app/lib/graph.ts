@@ -1,8 +1,13 @@
 import { GraphQLClient, gql } from 'graphql-request'
 
-export const SUBGRAPH_URL = process.env.NEXT_PUBLIC_SUBGRAPH_URL!
+// Subgraph URLs for different networks
+export const SUBGRAPH_URLS = {
+  arbitrum: process.env.NEXT_PUBLIC_SUBGRAPH_ARBITRUM_URL!,
+  mainnet: process.env.NEXT_PUBLIC_SUBGRAPH_MAINNET_URL!,
+  base: process.env.NEXT_PUBLIC_SUBGRAPH_BASE_URL!
+}
 
-export const graphClient = new GraphQLClient(SUBGRAPH_URL)
+export const graphClient = new GraphQLClient(SUBGRAPH_URLS.arbitrum)
 
 export const LEADERBOARD_QUERY = gql`
   query GetLeaderboard($first: Int = 100) {
