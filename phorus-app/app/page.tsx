@@ -81,18 +81,35 @@ export default function BridgePage() {
   // Approval state
   const [needsApproval, setNeedsApproval] = useState(false)
   const [chainMismatch, setChainMismatch] = useState(false)
+  
+  // Store transaction details for success popup
+  const [successDetails, setSuccessDetails] = useState<{
+    fromToken: string
+    toChain: string
+  } | null>(null)
 
-  // Reset form when bridge is complete
+  // Reset form when bridge is complete (but keep success details for popup)
   useEffect(() => {
-    if (isConfirmed) {
-      // Reset form immediately
-      setAmount('')
-      setQuote(null)
-      setQuoteError(null)
-      setNeedsApproval(false)
-      setChainMismatch(false)
+    if (isConfirmed && txHash) {
+      // Store details before resetting
+      setSuccessDetails({
+        fromToken: fromToken.symbol,
+        toChain: toChain.name,
+      })
+      
+      // Reset form after a short delay to show popup
+      const timer = setTimeout(() => {
+        setAmount('')
+        setQuote(null)
+        setQuoteError(null)
+        setNeedsApproval(false)
+        setChainMismatch(false)
+        setSuccessDetails(null)
+      }, 5000) // Show popup for 5 seconds
+      
+      return () => clearTimeout(timer)
     }
-  }, [isConfirmed])
+  }, [isConfirmed, txHash, fromToken.symbol, toChain.name])
 
   // Fetch quote when parameters change
   useEffect(() => {
@@ -693,6 +710,48 @@ export default function BridgePage() {
               </div>
             )}
           </div>
+
+          {/* Success Popup */}
+          {isConfirmed && txHash && successDetails && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+              <div className="bridge-card rounded-3xl p-8 max-w-md w-full text-center space-y-4">
+                <div className="flex justify-center">
+                  <div className="w-16 h-16 rounded-full bg-mint/20 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                </div>
+                <h2 className="text-2xl font-serif text-white">Bridge Successful!</h2>
+                <p className="text-gray-400">
+                  Your {successDetails.fromToken} has been bridged to {successDetails.toChain}
+                </p>
+                <div className="pt-4 space-y-2">
+                  <a
+                    href={`${chain?.blockExplorers?.default?.url}/tx/${txHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-sm text-mint hover:text-mint-dark underline"
+                  >
+                    View on Explorer
+                  </a>
+                  <button
+                    onClick={() => {
+                      setAmount('')
+                      setQuote(null)
+                      setQuoteError(null)
+                      setNeedsApproval(false)
+                      setChainMismatch(false)
+                      setSuccessDetails(null)
+                    }}
+                    className="pill-button w-full mt-4"
+                  >
+                    Bridge Again
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer Info */}
           <div className="mt-6 text-center text-sm text-gray-500">
