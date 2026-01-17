@@ -1,0 +1,26 @@
+type User @entity {
+  id: ID! # wallet address
+  totalFeesPaid: BigInt!
+  depositVolume: BigInt!
+  bridgeCount: BigInt!
+  # Derived field for history
+  activities: [UserActivity!]! @derivedFrom(field: "user")
+  updatedAt: BigInt!
+  rank: BigInt # Optional: Can be calculated by the frontend or an aggregation service
+}
+
+enum ActivityType {
+  DEPOSIT
+  BRIDGE
+  FEE_PAYMENT
+}
+
+type UserActivity @entity {
+  id: ID! # txHash-logIndex
+  user: User!
+  type: ActivityType!
+  amount: BigInt!
+  txHash: Bytes!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+}
