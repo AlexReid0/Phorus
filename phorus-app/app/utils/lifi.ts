@@ -270,6 +270,11 @@ function findTokenAddress(symbol: string, chainId: string): string | null {
   // Map chain ID to TOKEN_ADDRESSES key
   const tokenAddressKey = getTokenAddressKey(chainId)
 
+  // Special handling for USDC on Ethereum mainnet - always use standard USDC address
+  if (symbol === 'USDC' && tokenAddressKey === 'ethereum') {
+    return '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+  }
+
   // Try exact match on the chain
   const chainTokens = TOKEN_ADDRESSES[tokenAddressKey]
   if (chainTokens?.[symbol]) {
