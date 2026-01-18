@@ -665,6 +665,11 @@ export default function BridgePage() {
                   }
                   
                   // Build complete action object with all required fields
+                  // When advanced bridge is off (!showCustomToField) and going to Hyperliquid, always use USDC for toToken
+                  const isHyperliquidDest = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+                  const finalToTokenSymbol = (!showCustomToField && isHyperliquidDest) ? 'USDC' : toToken.symbol
+                  const finalToTokenDecimals = (!showCustomToField && isHyperliquidDest) ? 6 : (stepAction?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6))
+                  
                   const quoteAction = {
                     ...stepAction,
                     fromToken: {
@@ -676,8 +681,8 @@ export default function BridgePage() {
                     toToken: {
                       ...stepAction?.toToken,
                       address: toTokenAddress,
-                      symbol: toToken.symbol,
-                      decimals: stepAction?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6),
+                      symbol: finalToTokenSymbol,
+                      decimals: finalToTokenDecimals,
                     },
                   }
                   
@@ -880,6 +885,16 @@ export default function BridgePage() {
                 })
                 setLoadingQuote(false)
                 return
+              }
+
+              // When advanced bridge is off and going to Hyperliquid, force toToken to USDC
+              const isHyperliquidSelected = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+              if (!showCustomToField && isHyperliquidSelected && quoteData.action?.toToken) {
+                quoteData.action.toToken = {
+                  ...quoteData.action.toToken,
+                  symbol: 'USDC',
+                  decimals: 6,
+                }
               }
 
               setQuote(quoteData)
@@ -1289,17 +1304,19 @@ export default function BridgePage() {
   // Format output amount from quote
   const getOutputAmount = () => {
     if (quote?.estimate?.toAmount) {
-      // When advanced bridge is off, always use USDC decimals (6)
-      // When advanced bridge is on, use the actual toToken decimals
+      // When advanced bridge is off and going to Hyperliquid, always use USDC decimals (6)
+      // When advanced bridge is on, use the actual toToken decimals from quote
       let decimals: number
-      if (!showCustomToField) {
-        // Advanced bridge is off - always USDC
+      const isHyperliquidDest = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+      if (!showCustomToField && isHyperliquidDest) {
+        // Advanced bridge is off and going to Hyperliquid - always USDC (6 decimals)
         decimals = 6
       } else {
-        // Advanced bridge is on - use toToken decimals
+        // Advanced bridge is on - use toToken decimals from quote, fallback to toToken state
         decimals = quote.action?.toToken?.decimals || (toToken.symbol === 'ETH' ? 18 : 6)
       }
-      return formatUnits(BigInt(quote.estimate.toAmount), decimals)
+      const formatted = formatUnits(BigInt(quote.estimate.toAmount), decimals)
+      return formatted
     }
     if (amount) {
       return (parseFloat(amount) * 0.999).toFixed(4)
@@ -2285,7 +2302,15 @@ export default function BridgePage() {
                       <span className="text-sm text-red-400">{quoteError}</span>
                     ) : (
                       <>
-                        {getOutputAmount()} {!showCustomToField ? 'USDC' : toToken.symbol.replace(' (perps)', '')}
+                        {getOutputAmount()} {(() => {
+                          // When advanced bridge is off and going to Hyperliquid, always show USDC
+                          const isHyperliquidDest = (toChain.id === 'hpl' || toChain.id === 'hyperliquid')
+                          if (!showCustomToField && isHyperliquidDest) {
+                            return 'USDC'
+                          }
+                          // Otherwise use the quote's toToken symbol or fallback to toToken state
+                          return (quote?.action?.toToken?.symbol || toToken.symbol).replace(' (perps)', '')
+                        })()}
                       </>
                     )}
                   </span>
