@@ -1736,10 +1736,10 @@ export default function BridgePage() {
               ) : (
                 // Direct mode - show text with arrow below
                 <div className="flex flex-col items-center gap-3 py-3">
-                  <span className="text-base text-mint font-medium tracking-wide">Directly to your Hyperliquid trading account</span>
+                  <span className="text-lg text-mint font-semibold tracking-wide">Direct to Hypercore</span>
                   <div className="relative">
                     <div className="absolute inset-0 bg-mint/20 blur-xl rounded-full"></div>
-                    <svg className="w-12 h-12 text-mint relative" fill="none" stroke="currentColor" viewBox="0 0 48 48" strokeWidth="2">
+                    <svg className="w-10 h-10 text-mint relative" fill="none" stroke="currentColor" viewBox="0 0 48 48" strokeWidth="2">
                       <circle cx="24" cy="24" r="22" stroke="currentColor" strokeWidth="1.5" />
                       <path strokeLinecap="round" strokeLinejoin="round" d="M24 16 L24 32 M18 26 L24 32 L30 26" />
                     </svg>
