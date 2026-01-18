@@ -1721,16 +1721,27 @@ export default function BridgePage() {
               </div>
             </div>
 
-            {/* Swap Arrow */}
+            {/* Swap Arrow or Direct Text */}
             <div className="flex justify-center -my-2">
-              <button
-                onClick={handleSwapChains}
-                className="bg-black border-2 border-mint/30 rounded-full p-3 hover:border-mint/50 transition-all hover:scale-110"
-              >
-                <svg className="w-6 h-6 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                </svg>
-              </button>
+              {showCustomToField ? (
+                // Advanced bridge mode - show swap button
+                <button
+                  onClick={handleSwapChains}
+                  className="bg-black border-2 border-mint/30 rounded-full p-3 hover:border-mint/50 transition-all hover:scale-110"
+                >
+                  <svg className="w-6 h-6 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                </button>
+              ) : (
+                // Direct mode - show text
+                <div className="bg-black border-2 border-mint/30 rounded-full px-6 py-3 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                  <span className="text-sm text-mint font-medium">Directly to your Hyperliquid trading account</span>
+                </div>
+              )}
             </div>
 
             {/* To Section */}
