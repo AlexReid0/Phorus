@@ -28,7 +28,6 @@ function getTokenAddressesKey(chainId: string): string | null {
     'base': 'base',
     'polygon': 'polygon',
     'avalanche': 'avalanche',
-    'hyperliquid': 'hyperliquid',
   }
   return chainMap[chainId] || null
 }
