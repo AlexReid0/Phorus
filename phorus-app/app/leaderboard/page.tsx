@@ -23,12 +23,7 @@ export default function LeaderboardPage() {
                         </div>
                     </Link>
 
-                    <div className="hidden md:flex items-center gap-8 font-sans text-sm font-medium">
-                        <span className="text-white/50 cursor-not-allowed">How it Works</span>
-                        <span className="text-white/50 cursor-not-allowed">About</span>
-                        <span className="text-[#A8F5D0] cursor-default">Points</span>
-                        <span className="text-white/50 cursor-not-allowed">Docs</span>
-                    </div>
+
 
                     <Link href="/"
                         className="px-5 py-2 bg-[#A8F5D0] text-[#0A1F0A] rounded-full text-xs font-bold hover:bg-[#A8F5D0]/90 transition-colors inline-block">
