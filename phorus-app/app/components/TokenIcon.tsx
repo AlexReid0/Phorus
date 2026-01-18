@@ -77,12 +77,12 @@ function getTokenLogoUrl(symbol: string, chainId?: string): string | null {
     address = chainTokens[symbolUpper] || chainTokens[symbolLower] || chainTokens[symbol]
   }
   
-  // Handle native ETH - use native coin logo from Trust Wallet
+  // Handle native ETH - always use Ethereum logo, not the chain's native logo
+  // ETH on Arbitrum, Optimism, etc. should show the ETH logo, not the chain logo
   if (symbol.toUpperCase() === 'ETH' && (!address || address === '0x0000000000000000000000000000000000000000')) {
-    const trustWalletChain = getTrustWalletChainName(addressesKey)
-    // Native coins use info/logo.png instead of assets/{address}/logo.png
-    const logoUrl = `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${trustWalletChain}/info/logo.png`
-    console.log('[TokenIcon] Using native ETH logo', { symbol, chainId, trustWalletChain, logoUrl })
+    // Always use Ethereum's ETH logo for ETH token across all chains
+    const logoUrl = `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png`
+    console.log('[TokenIcon] Using Ethereum ETH logo', { symbol, chainId, addressesKey, logoUrl })
     return logoUrl
   }
   
