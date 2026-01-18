@@ -1735,11 +1735,14 @@ export default function BridgePage() {
                 </button>
               ) : (
                 // Direct mode - show text with arrow below
-                <div className="flex flex-col items-center gap-2 py-2">
-                  <span className="text-sm text-mint/80 font-medium">Directly to your Hyperliquid trading account</span>
-                  <svg className="w-8 h-8 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                  </svg>
+                <div className="flex flex-col items-center gap-3 py-3">
+                  <span className="text-base text-mint font-medium tracking-wide">Directly to your Hyperliquid trading account</span>
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-mint/20 blur-xl rounded-full"></div>
+                    <svg className="w-10 h-10 text-mint relative" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                  </div>
                 </div>
               )}
             </div>
@@ -1749,11 +1752,6 @@ export default function BridgePage() {
               <div className="flex items-center justify-between">
                 {showCustomToField && (
                   <label className="text-sm text-gray-400 font-medium">To</label>
-                )}
-                {isConnected && hyperliquidAddress && !showCustomToField && (
-                  <span className="text-xs text-mint font-medium">
-                    One-Step to HyperCore
-                  </span>
                 )}
               </div>
 
