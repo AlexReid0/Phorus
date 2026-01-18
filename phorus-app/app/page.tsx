@@ -1734,12 +1734,12 @@ export default function BridgePage() {
                   </svg>
                 </button>
               ) : (
-                // Direct mode - show text
-                <div className="bg-black border-2 border-mint/30 rounded-full px-6 py-3 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                // Direct mode - show text with arrow below
+                <div className="flex flex-col items-center gap-2 py-2">
+                  <span className="text-sm text-mint/80 font-medium">Directly to your Hyperliquid trading account</span>
+                  <svg className="w-8 h-8 text-mint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                   </svg>
-                  <span className="text-sm text-mint font-medium">Directly to your Hyperliquid trading account</span>
                 </div>
               )}
             </div>
