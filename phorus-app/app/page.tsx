@@ -2649,14 +2649,17 @@ export default function BridgePage() {
                   >
                     View on Explorer
                   </a>
-                  <a
-                    href="https://app.hyperliquid.xyz"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="pill-button w-full mt-4 block text-center"
-                  >
-                    Go to Hyperliquid
-                  </a>
+                  {/* Show Hyperliquid portfolio link if bridging to Hyperliquid */}
+                  {(successDetails.toChain === 'Hyperliquid' || toChain.id === 'hpl' || toChain.id === 'hyperliquid') && (
+                    <a
+                      href="https://app.hyperliquid.xyz/portfolio"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="pill-button w-full mt-4 block text-center"
+                    >
+                      View Portfolio on Hyperliquid
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
