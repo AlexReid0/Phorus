@@ -1738,8 +1738,8 @@ export default function BridgePage() {
                 <div className="flex flex-col items-center gap-3 py-3">
                   <span className="text-base text-mint font-medium tracking-wide">Directly to your Hyperliquid trading account</span>
                   <div className="relative">
-                    <div className="absolute inset-0 bg-mint/20 blur-xl rounded-full"></div>
-                    <svg className="w-10 h-10 text-mint relative" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                    <div className="absolute inset-0 bg-mint/20 blur-xl"></div>
+                    <svg className="w-8 h-14 text-mint relative" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                     </svg>
                   </div>
