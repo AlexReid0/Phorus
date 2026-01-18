@@ -637,7 +637,13 @@ export default function BridgePage() {
                   if (isHyperliquid && isHyperliquidDirect) {
                     // Always use perps address for Hyperliquid direct mode
                     toTokenAddress = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'
-                    console.log('[StepAction] Overriding toToken address to PERPS:', toTokenAddress)
+                    console.log('[StepAction] FORCING toToken address to PERPS:', {
+                      toTokenAddress,
+                      isHyperliquid,
+                      isHyperliquidDirect,
+                      originalAddress: stepAction?.toToken?.address,
+                      originalSymbol: stepAction?.toToken?.symbol
+                    })
                   } else if (!toTokenAddress) {
                     // For other tokens, look it up
                     const chainTokens = TOKEN_ADDRESSES[toChain.id] || TOKEN_ADDRESSES['ethereum']
@@ -646,13 +652,22 @@ export default function BridgePage() {
                   }
                   
                   // CRITICAL: Update stepWithTx.action.toToken.address directly so it's used in the actual transaction
+                  // When in direct mode to Hyperliquid, keep the original symbol (USDC (perps)) to match the address
+                  const finalSymbolForStep = (isHyperliquid && isHyperliquidDirect) 
+                    ? stepAction?.toToken?.symbol || 'USDC (perps)'
+                    : toToken.symbol
+                  
                   if (stepWithTx.action) {
                     stepWithTx.action.toToken = {
                       ...stepWithTx.action.toToken,
                       address: toTokenAddress,
-                      symbol: toToken.symbol,
+                      symbol: finalSymbolForStep,
                     }
-                    console.log('[StepAction] Updated stepWithTx.action.toToken.address to:', toTokenAddress)
+                    console.log('[StepAction] Updated stepWithTx.action.toToken:', { 
+                      address: toTokenAddress, 
+                      symbol: finalSymbolForStep,
+                      isHyperliquidDirect 
+                    })
                   }
                   
                   // Also update firstStep.action if it exists (for fallback)
@@ -660,7 +675,7 @@ export default function BridgePage() {
                     firstStep.action.toToken = {
                       ...firstStep.action.toToken,
                       address: toTokenAddress,
-                      symbol: toToken.symbol,
+                      symbol: finalSymbolForStep,
                     }
                   }
                   
