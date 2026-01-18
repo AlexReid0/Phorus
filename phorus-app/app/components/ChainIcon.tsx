@@ -65,7 +65,7 @@ function getChainLogoUrl(chainId: string): string | null {
 // Fallback colors if image fails to load
 const getChainColor = (chainId: string): string => {
   const fallbackColors: Record<string, string> = {
-    // LiFi keys
+    // LiFi short keys
     'eth': '#627EEA',
     'arb': '#28A0F0',
     'opt': '#FF0420',
@@ -75,6 +75,8 @@ const getChainColor = (chainId: string): string => {
     'bsc': '#F3BA2F',
     'cro': '#002D74',
     'ftm': '#1969FF',
+    'hpl': '#A8F5D0',
+    // Chains that use their full name as the key
     'celo': '#35D07F',
     'gnosis': '#04795B',
     'zksync': '#8C8DFC',
@@ -84,9 +86,8 @@ const getChainColor = (chainId: string): string => {
     'moonbeam': '#53CBC9',
     'mantle': '#000000',
     'opbnb': '#F3BA2F',
-    'hpl': '#A8F5D0',
     'hyperliquid': '#A8F5D0',
-    // Full names
+    // Full names (for chains with short codes)
     'ethereum': '#627EEA',
     'arbitrum': '#28A0F0',
     'optimism': '#FF0420',
@@ -96,15 +97,6 @@ const getChainColor = (chainId: string): string => {
     'smartchain': '#F3BA2F',
     'cronos': '#002D74',
     'fantom': '#1969FF',
-    'celo': '#35D07F',
-    'gnosis': '#04795B',
-    'zksync': '#8C8DFC',
-    'linea': '#000000',
-    'scroll': '#FFE6D3',
-    'blast': '#FCFC03',
-    'moonbeam': '#53CBC9',
-    'mantle': '#000000',
-    'opbnb': '#F3BA2F',
   }
   return fallbackColors[chainId.toLowerCase()] || '#666'
 }
