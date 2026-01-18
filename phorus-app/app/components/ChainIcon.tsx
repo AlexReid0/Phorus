@@ -15,7 +15,7 @@ function getTrustWalletChainName(chainId: string): string | null {
   
   // Map LiFi keys to Trust Wallet chain names
   const chainMap: Record<string, string> = {
-    // Main chains
+    // Main chains (short codes)
     'eth': 'ethereum',
     'arb': 'arbitrum',
     'opt': 'optimism',
@@ -25,6 +25,7 @@ function getTrustWalletChainName(chainId: string): string | null {
     'bsc': 'smartchain',
     'cro': 'cronos',
     'ftm': 'fantom',
+    // Chains that use their full name as the key
     'celo': 'celo',
     'gnosis': 'gnosis',
     'zksync': 'zksync',
@@ -34,7 +35,7 @@ function getTrustWalletChainName(chainId: string): string | null {
     'moonbeam': 'moonbeam',
     'mantle': 'mantle',
     'opbnb': 'opbnb',
-    // Also handle if already in full format
+    // Also handle if already in full format (for chains with short codes)
     'ethereum': 'ethereum',
     'arbitrum': 'arbitrum',
     'optimism': 'optimism',
@@ -44,14 +45,6 @@ function getTrustWalletChainName(chainId: string): string | null {
     'smartchain': 'smartchain',
     'cronos': 'cronos',
     'fantom': 'fantom',
-    'gnosis': 'gnosis',
-    'zksync': 'zksync',
-    'linea': 'linea',
-    'scroll': 'scroll',
-    'blast': 'blast',
-    'moonbeam': 'moonbeam',
-    'mantle': 'mantle',
-    'opbnb': 'opbnb',
   }
   
   return chainMap[chainId.toLowerCase()] || null
