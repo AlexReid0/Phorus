@@ -114,6 +114,15 @@ export default function BridgePage() {
       address = TOKEN_ADDRESSES['ethereum']?.[fromToken.symbol]
     }
     
+    // Special handling for USDC on Ethereum mainnet - use standard USDC address
+    if (fromToken.symbol === 'USDC' && tokenAddressKey === 'ethereum') {
+      const standardUsdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+      if (address !== standardUsdcAddress) {
+        console.log('[Balance] Using standard USDC address for Ethereum', { originalAddress: address, standardUsdcAddress })
+        address = standardUsdcAddress
+      }
+    }
+    
     // For Hyperliquid USDT, use the same address as USDC for now (may need to be updated when USDT is fully enabled)
     if (((fromChain as any).id === 'hpl' || (fromChain as any).id === 'hyperliquid') && fromToken.symbol === 'USDT') {
       // USDT on Hyperliquid may use the same contract as USDC or may not be fully enabled yet
